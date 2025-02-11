@@ -35,7 +35,6 @@ class Rating(models.Model):
     professor = models.ForeignKey(Professor, on_delete=models.CASCADE, related_name='ratings')
     avg_rating = models.FloatField(default=0.0, db_index=True)
     flag_status = models.CharField(max_length=50, null=True, db_index=True)
-    class_name = models.CharField(max_length=100, null=True, db_index=True)
     helpful_rating = models.FloatField(null=True, db_index=True)
     clarity_rating = models.FloatField(null=True, db_index=True)
     difficulty_rating = models.FloatField(null=True, db_index=True)
@@ -50,7 +49,7 @@ class Rating(models.Model):
         ]
 
     def __str__(self):
-        return f"{self.professor} - {self.avg_rating} - {self.flag_status} - {self.class_name}"
+        return f"{self.professor} - {self.avg_rating} - {self.flag_status}"
 
 class Sentiment(models.Model):
     professor = models.ForeignKey(User, on_delete=models.CASCADE, related_name='sentiment')
