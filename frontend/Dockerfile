@@ -13,8 +13,9 @@ RUN npm install
 # Copy project files
 COPY . .
 
-# Set environment variables
+# Build with explicit static file paths
 ENV VITE_APP_API_URL=http://localhost:8000/api
+ENV PUBLIC_URL=/static
 
-# Start development server (using Vite)
-CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
+# Build for production
+CMD ["npm", "run", "build"]

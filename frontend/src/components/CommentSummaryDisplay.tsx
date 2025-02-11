@@ -2,9 +2,18 @@ import React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
 
-interface CommentSummary {
-  positive_summary: string;
-  negative_summary: string;
+interface SentimentSummary {
+  total_comments: number;
+  sentiment_breakdown: {
+    positive: number;
+    negative: number;
+  };
+  recent_sentiments: Array<{
+    comment: string;
+    processed_comment: string;
+    sentiment: number;
+    created_at: string;
+  }>;
 }
 
 interface CommentSummaryDisplayProps {
@@ -12,8 +21,8 @@ interface CommentSummaryDisplayProps {
   className?: string;
 }
 
-const fetchCommentSummary = async (professorId: string): Promise<CommentSummary> => {
-  const { data } = await axios.get(`/api/professors/${professorId}/comment_summary/`);
+const fetchSentimentSummary = async (professorId: string): Promise<SentimentSummary> => {
+  const { data } = await axios.get(`/api/professors/${professorId}/sentiment-summary/`);
   return data;
 };
 
@@ -27,48 +36,77 @@ export const CommentSummaryDisplay: React.FC<CommentSummaryDisplayProps> = ({
     isError,
     error
   } = useQuery({
-    queryKey: ['commentSummary', professorId],
-    queryFn: () => fetchCommentSummary(professorId)
+    queryKey: ['sentimentSummary', professorId],
+    queryFn: () => fetchSentimentSummary(professorId)
   });
 
-  if (isLoading) {
-    return (
-      <div className={`p-4 bg-white rounded-lg shadow ${className}`}>
-        <div className="animate-pulse space-y-4">
-          <div className="h-4 bg-gray-200 rounded w-3/4"></div>
-          <div className="h-4 bg-gray-200 rounded w-1/2"></div>
-        </div>
-      </div>
-    );
-  }
+  if (isLoading) return <div className="animate-pulse">Loading...</div>;
 
   if (isError) {
     return (
-      <div className={`p-4 bg-white rounded-lg shadow ${className}`}>
-        <p className="text-red-600">
-          Error loading comment summaries: {(error as Error).message}
-        </p>
+      <div className="text-red-600">
+        Error loading summaries: {(error as Error).message}
       </div>
     );
   }
 
+  if (!summary) {
+    return <div>No data available</div>;
+  }
+
   return (
-    <div className={`p-4 bg-white rounded-lg shadow ${className}`}>
-      <div className="space-y-6">
-        <div>
-          <h3 className="text-lg font-semibold text-green-600 mb-2">
-            Positive Feedback Summary
-          </h3>
-          <p className="text-gray-700">{summary?.positive_summary}</p>
+    <div className={`space-y-6 ${className}`}>
+      {/* Sentiment Distribution */}
+      <div className="bg-white rounded-lg shadow p-6">
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">
+          Overall Sentiment Distribution
+        </h3>
+        <div className="grid grid-cols-3 gap-4">
+          <div className="text-center p-4 bg-green-50 rounded-lg">
+            <div className="text-2xl font-bold text-green-600">
+              {((summary.sentiment_breakdown.positive / summary.total_comments) * 100).toFixed(1)}%
+            </div>
+            <div className="text-sm text-gray-600">Positive</div>
+          </div>
+          <div className="text-center p-4 bg-red-50 rounded-lg">
+            <div className="text-2xl font-bold text-red-600">
+              {((summary.sentiment_breakdown.negative / summary.total_comments) * 100).toFixed(1)}%
+            </div>
+            <div className="text-sm text-gray-600">Negative</div>
+          </div>
         </div>
-        
-        <div>
-          <h3 className="text-lg font-semibold text-red-600 mb-2">
-            Areas for Improvement
-          </h3>
-          <p className="text-gray-700">{summary?.negative_summary}</p>
+      </div>
+
+      {/* Recent Comments */}
+      <div className="bg-white rounded-lg shadow p-6">
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">
+          Recent Comments
+        </h3>
+        <div className="space-y-4">
+          {summary.recent_sentiments.map((sentiment, index) => (
+            <div 
+              key={index}
+              className={`p-4 rounded-lg ${
+                sentiment.sentiment > 0 ? 'bg-green-50' :
+                sentiment.sentiment < 0 ? 'bg-red-50' : 'bg-gray-50'
+              }`}
+            >
+              <p className="text-gray-700">{sentiment.comment}</p>
+              <div className="mt-2 flex justify-between items-center text-sm">
+                <span className="text-gray-500">
+                  {new Date(sentiment.created_at).toLocaleDateString()}
+                </span>
+                <span className={`font-medium ${
+                  sentiment.sentiment > 0 ? 'text-green-600' :
+                  sentiment.sentiment < 0 ? 'text-red-600' : 'text-gray-600'
+                }`}>
+                  Sentiment Score: {sentiment.sentiment}
+                </span>
+              </div>
+            </div>
+          ))}
         </div>
       </div>
     </div>
   );
-}; 
+};

@@ -93,6 +93,14 @@ export const DepartmentGenderBiasDashboard: React.FC = () => {
     );
   }
 
+  if (!data) {
+    return (
+      <div className="bg-red-50 text-red-700 p-4 rounded-lg">
+        No data available
+      </div>
+    );
+  }
+
   const sortedDepartments = [...data.department_biases].sort((a, b) => {
     if (sortBy === 'significance') {
       return a.p_value - b.p_value;
@@ -117,11 +125,12 @@ export const DepartmentGenderBiasDashboard: React.FC = () => {
             }`}>
               {data.overall_bias_score.toFixed(3)}
             </span>
-            <Info 
-              size={16} 
-              className="text-gray-400 cursor-help"
-              title="Positive values indicate bias favoring male professors, negative values indicate bias favoring female professors"
-            />
+            <div title="Positive values indicate bias favoring male professors, negative values indicate bias favoring female professors">
+              <Info 
+                size={16} 
+                className="text-gray-400 cursor-help"
+              />
+            </div>
           </div>
         </div>
       </div>
@@ -150,7 +159,7 @@ export const DepartmentGenderBiasDashboard: React.FC = () => {
               <XAxis type="number" domain={['dataMin', 'dataMax']} />
               <YAxis dataKey="department_name" type="category" width={150} />
               <Tooltip
-                content={({ payload, label }) => {
+                content={({ payload }) => {
                   if (!payload?.length) return null;
                   const data = payload[0].payload as DepartmentBias;
                   return (
@@ -256,4 +265,4 @@ export const DepartmentGenderBiasDashboard: React.FC = () => {
       </div>
     </div>
   );
-}; 
+};

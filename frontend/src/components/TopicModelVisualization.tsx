@@ -155,6 +155,10 @@ export const TopicModelVisualization: React.FC<TopicModelVisualizationProps> = (
     );
   }
 
+  if (!data) {
+    return null;
+  }
+
   const maxDistribution = Math.max(...data.topics.map(t => t.distribution));
 
   return (
@@ -208,7 +212,7 @@ export const TopicModelVisualization: React.FC<TopicModelVisualizationProps> = (
                 />
                 <Tooltip
                   formatter={(value: number) => [`${(value * 100).toFixed(1)}%`, 'Distribution']}
-                  content={({ active, payload, label }) => {
+                  content={({ active, payload }) => {
                     if (!active || !payload?.length) return null;
                     const topic = payload[0].payload as Topic;
                     return (
@@ -252,4 +256,4 @@ export const TopicModelVisualization: React.FC<TopicModelVisualizationProps> = (
       )}
     </div>
   );
-}; 
+};

@@ -1,12 +1,30 @@
 Django==5.0.2
 djangorestframework==3.14.0
 django-cors-headers==4.3.1
+django-filter==23.5
 psycopg2-binary==2.9.9
 gunicorn==21.2.0
 python-dotenv==1.0.1
-nltk==3.8.1
-gensim==4.3.2
+whitenoise==6.6.0
+
+# Async task processing
+celery==5.4.0
+redis==5.0.1
+
+# Data processing and analysis
 pandas==2.2.0
+numpy==1.26.3
 scikit-learn==1.4.0
+
+# Text processing and sentiment analysis
+nltk==3.8.1
+textblob==0.17.1
+vaderSentiment==3.3.2
+
+# API Documentation
 drf-spectacular==0.27.1
-django-filter==23.5
+
+# Testing
+pytest==8.0.0
+pytest-django==4.8.0
+factory-boy==3.3.0

@@ -7,6 +7,7 @@ interface UploadResponse {
   success: boolean;
   message: string;
   recordsProcessed?: number;
+  errors?: string[];
 }
 
 export const DataUploadForm: React.FC = () => {
@@ -19,18 +20,19 @@ export const DataUploadForm: React.FC = () => {
     mutationFn: async (file: File) => {
       const formData = new FormData();
       formData.append('file', file);
-      const { data } = await axios.post<UploadResponse>('/api/admin/upload-evaluations', formData, {
+      const { data } = await axios.post<UploadResponse>('/api/ratings/upload/', formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
       });
       return data;
     },
-    onSuccess: (data) => {
-      // Invalidate relevant queries to trigger refetch
-      queryClient.invalidateQueries({ queryKey: ['evaluations'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] });
-      queryClient.invalidateQueries({ queryKey: ['commentSummary'] });
+    onSuccess: () => {
+      // Invalidate queries that depend on ratings data
+      queryClient.invalidateQueries({ queryKey: ['ratings'] });
+      queryClient.invalidateQueries({ queryKey: ['professors'] });
+      queryClient.invalidateQueries({ queryKey: ['departmentStats'] });
+      queryClient.invalidateQueries({ queryKey: ['sentiment-analysis'] });
     },
   });
 
@@ -62,8 +64,17 @@ export const DataUploadForm: React.FC = () => {
     }
   };
 
+  const validateCSV = (file: File): boolean => {
+    // Only allow .csv files
+    if (!file.name.endsWith('.csv')) {
+      alert('Please upload a CSV file');
+      return false;
+    }
+    return true;
+  };
+
   const handleUpload = async () => {
-    if (selectedFile) {
+    if (selectedFile && validateCSV(selectedFile)) {
       uploadMutation.mutate(selectedFile);
     }
   };
@@ -77,7 +88,14 @@ export const DataUploadForm: React.FC = () => {
 
   return (
     <div className="bg-white rounded-lg shadow p-6">
-      <h2 className="text-xl font-semibold text-gray-900 mb-4">Upload Evaluation Data</h2>
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-xl font-semibold text-gray-900">Upload Evaluation Data</h2>
+        <div className="text-sm text-gray-500">
+          <a href="/api/ratings/template" className="text-indigo-600 hover:text-indigo-800">
+            Download Template
+          </a>
+        </div>
+      </div>
       
       <div
         className={`relative border-2 border-dashed rounded-lg p-6 transition-colors
@@ -148,10 +166,19 @@ export const DataUploadForm: React.FC = () => {
       {uploadMutation.isSuccess && (
         <div className="mt-4 p-3 bg-green-50 text-green-700 rounded-md flex items-center space-x-2">
           <Check size={16} />
-          <span>
-            Upload successful! {uploadMutation.data.recordsProcessed} records processed.
-            Dashboard data will refresh automatically.
-          </span>
+          <div>
+            <p>Upload successful! {uploadMutation.data.recordsProcessed} evaluations processed.</p>
+            {uploadMutation.data.errors && uploadMutation.data.errors.length > 0 && (
+              <details className="mt-2">
+                <summary className="cursor-pointer text-sm">Show skipped records</summary>
+                <ul className="mt-2 text-sm list-disc list-inside">
+                  {uploadMutation.data.errors.map((error, i) => (
+                    <li key={i}>{error}</li>
+                  ))}
+                </ul>
+              </details>
+            )}
+          </div>
         </div>
       )}
 
@@ -183,4 +210,4 @@ export const DataUploadForm: React.FC = () => {
       </div>
     </div>
   );
-}; 
+};

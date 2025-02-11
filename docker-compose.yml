@@ -1,34 +1,78 @@
 services:
   backend:
     build: ./backend
-    command: gunicorn faireval.wsgi:application --bind 0.0.0.0:8000
+    command: >
+      sh -c "python manage.py collectstatic --noinput &&
+             gunicorn faireval.wsgi:application --bind 0.0.0.0:8000"
     volumes:
       - ./backend:/app
+      - frontend_build:/app/frontend/dist
     ports:
       - "8000:8000"
     environment:
       - DEBUG=True
       - DJANGO_SETTINGS_MODULE=faireval.settings
       - SECRET_KEY=${DJANGO_SECRET_KEY}
-
-      - DB_HOST=host.docker.internal
+      - DB_HOST=postgres
       - DB_NAME=fair_eval_sys_db
       - DB_USER=postgres
       - DB_PASSWORD=password
       - DB_PORT=5432
-      - ALLOWED_HOSTS=localhost
+      - ALLOWED_HOSTS=localhost,127.0.0.1
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    depends_on:
+      - postgres
+      - redis
+      - frontend
+
+  celery_worker:
+    build: ./backend
+    command: celery -A faireval worker -l info
+    volumes:
+      - ./backend:/app
+    environment:
+      - DEBUG=True
+      - DJANGO_SETTINGS_MODULE=faireval.settings
+      - DB_HOST=postgres
+      - DB_NAME=fair_eval_sys_db
+      - DB_USER=postgres
+      - DB_PASSWORD=password
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    depends_on:
+      - postgres
+      - redis
+      - backend
+
+  redis:
+    image: redis:alpine
+    ports:
+      - "6379:6379"
+
+  postgres:
+    image: postgres:13
+    environment:
+      - POSTGRES_DB=fair_eval_sys_db
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
 
   frontend:
     build: ./frontend
+    command: sh -c "npm run dev -- --host"
     volumes:
       - ./frontend:/app
       - /app/node_modules
-    ports:
-      - "3000:3000"
+      - frontend_build:/app/dist
     environment:
-      - REACT_APP_API_URL=http://localhost:8000/api
-    depends_on:
-      - backend
+      - VITE_APP_API_URL=http://localhost:8000/api
+    ports:
+      - "5173:5173"
 
 volumes:
   postgres_data:
+  frontend_build:

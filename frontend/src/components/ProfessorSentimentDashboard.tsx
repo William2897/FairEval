@@ -5,19 +5,23 @@ import { Loader2 } from 'lucide-react';
 interface SentimentData {
   sentiment_counts: {
     positive: number;
-    neutral: number;
+    negative: number;
+  };
+  vader_scores: {
+    compound: number;
+    positive: number;
     negative: number;
   };
   top_words: {
     positive: Array<{ word: string; count: number }>;
     negative: Array<{ word: string; count: number }>;
   };
-  vader_scores: {
-    compound: number;
-    positive: number;
-    neutral: number;
-    negative: number;
-  };
+  recent_sentiments: Array<{
+    comment: string;
+    processed_comment: string;
+    sentiment: number;
+    created_at: string;
+  }>;
 }
 
 interface Props {
@@ -47,7 +51,7 @@ function ProfessorSentimentDashboard({ professorId }: Props) {
   const { data, isLoading, error } = useQuery<SentimentData>({
     queryKey: ['professor-sentiment', professorId],
     queryFn: async () => {
-      const response = await fetch(`/api/professors/${professorId}/sentiment/`);
+      const response = await fetch(`/api/professors/${professorId}/sentiment-analysis/`);
       if (!response.ok) {
         throw new Error('Failed to fetch sentiment data');
       }
@@ -73,14 +77,12 @@ function ProfessorSentimentDashboard({ professorId }: Props) {
 
   const sentimentData = [
     { name: 'Positive', count: data.sentiment_counts.positive },
-    { name: 'Neutral', count: data.sentiment_counts.neutral },
     { name: 'Negative', count: data.sentiment_counts.negative },
   ];
 
   const vaderData = [
     { name: 'Compound', score: data.vader_scores.compound },
     { name: 'Positive', score: data.vader_scores.positive },
-    { name: 'Neutral', score: data.vader_scores.neutral },
     { name: 'Negative', score: data.vader_scores.negative },
   ];
 
@@ -127,6 +129,43 @@ function ProfessorSentimentDashboard({ professorId }: Props) {
               />
             </BarChart>
           </ResponsiveContainer>
+        </div>
+      </div>
+
+      {/* Recent Sentiments */}
+      <div className="bg-white p-6 rounded-lg shadow-md">
+        <h2 className="text-xl font-semibold text-gray-900 mb-4">
+          Recent Sentiment Analysis
+        </h2>
+        <div className="space-y-4">
+          {data?.recent_sentiments.map((sentiment, index) => (
+            <div 
+              key={index}
+              className={`p-4 rounded-lg ${
+                sentiment.sentiment > 0 
+                  ? 'bg-green-50' 
+                  : sentiment.sentiment < 0 
+                  ? 'bg-red-50' 
+                  : 'bg-gray-50'
+              }`}
+            >
+              <p className="text-gray-700">{sentiment.comment}</p>
+              <div className="mt-2 flex justify-between items-center text-sm">
+                <span className="text-gray-500">
+                  {new Date(sentiment.created_at).toLocaleDateString()}
+                </span>
+                <span className={`font-medium ${
+                  sentiment.sentiment > 0 
+                    ? 'text-green-600' 
+                    : sentiment.sentiment < 0 
+                    ? 'text-red-600' 
+                    : 'text-gray-600'
+                }`}>
+                  Sentiment: {sentiment.sentiment}
+                </span>
+              </div>
+            </div>
+          ))}
         </div>
       </div>
 

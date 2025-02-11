@@ -61,3 +61,6 @@ ENV/
 
 # Docker
 .docker/
+
+#Static files
+staticfiles/
