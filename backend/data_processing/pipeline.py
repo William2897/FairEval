@@ -2,11 +2,11 @@
 
 import psycopg2
 from datetime import datetime
-from ingestion import ingest_csv_to_df
-from cleaning import clean_data
-from gender_assignment import engineer_gender
-from dept_mapping import map_departments
-from text_preprocessing import preprocess_comments
+from data_processing.ingestion import ingest_csv_to_df
+from data_processing.cleaning import clean_data
+from data_processing.gender_assignment import engineer_gender
+from data_processing.dept_mapping import map_departments
+from data_processing.text_preprocessing import preprocess_comments
 
 def run_full_pipeline(csv_path, db_config):
     """Optimized pipeline with batch processing"""

@@ -15,9 +15,13 @@ redis==5.0.1
 pandas==2.2.0
 numpy==1.26.3
 scikit-learn==1.4.0
+gender-guesser==0.4.0
+fuzzywuzzy==0.18.0
 
 # Text processing and sentiment analysis
-nltk==3.8.1
+spacy==3.8.4
+contractions==0.1.73
+nltk==3.9.1
 textblob==0.17.1
 vaderSentiment==3.3.2
 
