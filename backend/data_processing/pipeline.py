@@ -1,6 +1,7 @@
 # backend/fair_eval_backend/data_processing/pipeline.py
 
 import psycopg2
+import pandas as pd
 from datetime import datetime
 from data_processing.ingestion import ingest_csv_to_df
 from data_processing.cleaning import clean_data
@@ -18,11 +19,23 @@ def run_full_pipeline(csv_path, db_config):
     df = engineer_gender(df)
     df = map_departments(df)
     df = preprocess_comments(df)
+    
+    # Save processed data after Stage 2
+    processed_csv_path = csv_path.replace('.csv', '_processed.csv')
+    df.to_csv(processed_csv_path, index=False)
+    print(f"\nProcessed data saved to: {processed_csv_path}")
 
+    run_db_population(processed_csv_path, db_config)
+
+def run_db_population(processed_csv_path, db_config):
+    """Run only the database population stage using processed CSV"""
+    print("\n--- Loading processed data ---")
+    df = pd.read_csv(processed_csv_path)
+    
     print("\n--- Stage 3: Database Population ---")
     conn = psycopg2.connect(**db_config)
     cursor = conn.cursor()
-
+    
     try:
         # 1. Insert departments with batch processing
         dept_data = df[['department', 'discipline', 'sub_discipline']].drop_duplicates()
@@ -34,17 +47,29 @@ def run_full_pipeline(csv_path, db_config):
         cursor.executemany(insert_departments_sql, dept_data.values.tolist())
         conn.commit()
 
+        # Add after department insertion
+        cursor.execute("SELECT COUNT(*) FROM api_department")
+        dept_count = cursor.fetchone()[0]
+        if dept_count == 0:
+            raise Exception("No departments were inserted. Check department data.")
+
+        # Then proceed with professor insertion
+        prof_data = df[['professor_id', 'first_name', 'last_name', 'gender', 
+                        'department', 'would_take_again_percent']].drop_duplicates()
+
         # 2. Insert professors with batch processing (updated to include would_take_again_percent)
-        prof_data = df[['professor_id', 'first_name', 'last_name', 'gender', 'department', 'would_take_again_percent']].drop_duplicates()
         insert_professors_sql = """
             WITH dept_id AS (
-                SELECT id FROM api_department WHERE name = %s
+                SELECT id FROM api_department WHERE name = %s LIMIT 1
             )
             INSERT INTO api_professor (
-                professor_id, first_name, last_name, gender, 
-                 would_take_again_percent, department_id
+                professor_id, first_name, last_name, gender,
+                would_take_again_percent, department_id
             )
-            VALUES (%s, %s, %s, %s, (SELECT id FROM dept_id), %s)
+            SELECT 
+                %s, %s, %s, %s, %s, d.id
+            FROM dept_id d
+            WHERE EXISTS (SELECT 1 FROM dept_id)
             ON CONFLICT (professor_id) DO NOTHING
         """
         cursor.executemany(insert_professors_sql, 
@@ -57,7 +82,8 @@ def run_full_pipeline(csv_path, db_config):
         insert_users_sql = """
             INSERT INTO auth_user (
                 username, first_name, last_name, email,
-                password, is_staff, is_active, date_joined
+                password, is_staff, is_active, date_joined,
+                is_superuser  -- Add this field
             )
             SELECT 
                 p.professor_id,  -- username
@@ -67,7 +93,8 @@ def run_full_pipeline(csv_path, db_config):
                 'pbkdf2_sha256$600000$default_hash',  -- default hashed password
                 TRUE,  -- is_staff
                 TRUE,  -- is_active
-                NOW()  -- date_joined
+                NOW(),  -- date_joined
+                FALSE   -- is_superuser (set to false by default)
             FROM api_professor p
             LEFT JOIN auth_user u ON u.username = p.professor_id
             WHERE u.id IS NULL
@@ -80,16 +107,17 @@ def run_full_pipeline(csv_path, db_config):
         # 2.2 Assign roles (20% Admin, 80% Academic)
         admin_count = int(len(user_mappings) * 0.2)
         insert_roles_sql = """
-            INSERT INTO api_userrole (user_id, role, department_id)
+            INSERT INTO api_userrole (user_id, role, discipline)
             SELECT 
                 u.id,
                 CASE 
                     WHEN ROW_NUMBER() OVER (ORDER BY RANDOM()) <= %s THEN 'ADMIN'
                     ELSE 'ACADEMIC'
                 END,
-                p.department_id
+                d.discipline  -- Get discipline from department table
             FROM auth_user u
             JOIN api_professor p ON p.professor_id = u.username
+            JOIN api_department d ON d.id = p.department_id
             LEFT JOIN api_userrole ur ON ur.user_id = u.id
             WHERE ur.id IS NULL
         """
@@ -141,7 +169,7 @@ def run_full_pipeline(csv_path, db_config):
                 sentiment, created_at
             )
             SELECT 
-                p.id,
+                u.id,  -- Use auth_user id instead of professor id
                 s.comment,
                 s.proc_comment,
                 NULL,  -- sentiment will be computed later
@@ -157,6 +185,8 @@ def run_full_pipeline(csv_path, db_config):
                 )
             ) s
             JOIN api_professor p ON p.professor_id = s.prof_id
+            JOIN auth_user u ON u.username = p.professor_id  -- Join to get the auth_user id
+            WHERE u.id IS NOT NULL
         """
         
         current_time = datetime.now()
@@ -165,12 +195,12 @@ def run_full_pipeline(csv_path, db_config):
             # Prepare data arrays for ratings
             prof_ids = chunk['professor_id'].tolist()
             avg_ratings = chunk['avg_rating'].tolist()
-            flag_statuses = chunk['rating_flagstatus'].tolist()
-            helpful_ratings = chunk['rating_helpfulrating'].tolist()
-            clarity_ratings = chunk['rating_clarityrating'].tolist()
-            difficulty_ratings = chunk['rating_difficultyrating'].tolist()
-            is_onlines = chunk['rating_isforonlineclass'].tolist()
-            is_for_credits = chunk['rating_isforcredit'].tolist()
+            flag_statuses = chunk['flag_status'].tolist()
+            helpful_ratings = chunk['helpful_rating'].tolist()
+            clarity_ratings = chunk['clarity_rating'].tolist()
+            difficulty_ratings = chunk['difficulty_rating'].tolist()
+            is_onlines = chunk['is_online'].tolist()
+            is_for_credits = chunk['is_for_credit'].tolist()
             timestamps = [current_time] * len(chunk)
             
             # Execute ratings insertion
@@ -180,7 +210,7 @@ def run_full_pipeline(csv_path, db_config):
                 is_for_credits, timestamps
             ))
 
-            # Execute sentiment insertion
+            # Execute sentiment insertion with proper foreign key references
             cursor.execute(insert_sentiment_sql, (
                 prof_ids,
                 chunk['rating_comment'].tolist(),

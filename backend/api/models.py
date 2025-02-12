@@ -74,10 +74,9 @@ class UserRole(models.Model):
         choices=[('ADMIN', 'Administrator'), ('ACADEMIC', 'Academic Staff')],
         default='ACADEMIC'
     )
-    department = models.ForeignKey(
-        Department, 
-        on_delete=models.SET_NULL, 
-        null=True, 
+    discipline = models.CharField(  # Changed from department ForeignKey
+        max_length=200,
+        null=True,
         blank=True
     )
 

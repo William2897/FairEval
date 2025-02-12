@@ -6,7 +6,7 @@ from .models import Department, Professor, Rating, Sentiment, UserRole
 class UserRoleSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserRole
-        fields = ['role', 'department']
+        fields = ['role', 'discipline']
 
 class LoginSerializer(serializers.Serializer):
     username = serializers.CharField()

@@ -3,29 +3,56 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
 from django.db.models import Avg
-from django.contrib.auth import login, logout, get_user_model
-from .models import UserRole, Department, Professor, Rating, Sentiment  # Temporarily remove UserRole
+from django.contrib.auth import login, logout, get_user_model, authenticate
+from .models import UserRole, Department, Professor, Rating, Sentiment
 from .serializers import (
     DepartmentSerializer, ProfessorSerializer, RatingSerializer,
-    SentimentSerializer, UserSerializer, LoginSerializer, UserRoleSerializer
+    SentimentSerializer, UserSerializer, UserRoleSerializer
 )
 
 User = get_user_model()
 
-class AuthViewSet(viewsets.ViewSet):
+class AuthViewSet(viewsets.GenericViewSet):  # Changed from ViewSet to GenericViewSet
     permission_classes = [permissions.AllowAny]
     
     @action(detail=False, methods=['post'])
     def login(self, request):
-        serializer = LoginSerializer(data=request.data)
-        if serializer.is_valid():
-            user = serializer.validated_data
+        username = request.data.get('username')
+        password = request.data.get('password')
+        
+        if not username or not password:
+            return Response(
+                {'error': 'Please provide both username and password'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+            
+        user = authenticate(username=username, password=password)
+        
+        if user is not None:
             login(request, user)
+            try:
+                user_role = UserRole.objects.get(user=user)
+                role_data = {"role": user_role.role, "discipline": user_role.discipline}
+            except UserRole.DoesNotExist:
+                role_data = None
+                
+            user_data = {
+                "id": user.id,
+                "username": user.username,
+                "email": user.email,
+                "first_name": user.first_name,
+                "last_name": user.last_name,
+                "role": role_data
+            }
             return Response({
-                'user': UserSerializer(user).data,
+                'user': user_data,
                 'message': 'Logged in successfully'
             })
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        else:
+            return Response(
+                {'error': 'Invalid credentials'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
 
     @action(detail=False, methods=['post'])
     def logout(self, request):
@@ -35,7 +62,21 @@ class AuthViewSet(viewsets.ViewSet):
     @action(detail=False, methods=['get'])
     def me(self, request):
         if request.user.is_authenticated:
-            return Response(UserSerializer(request.user).data)
+            try:
+                user_role = UserRole.objects.get(user=request.user)
+                role_data = {"role": user_role.role, "discipline": user_role.discipline}
+            except UserRole.DoesNotExist:
+                role_data = None
+                
+            user_data = {
+                "id": request.user.id,
+                "username": request.user.username,
+                "email": request.user.email,
+                "first_name": request.user.first_name,
+                "last_name": request.user.last_name,
+                "role": role_data
+            }
+            return Response(user_data)
         return Response(status=status.HTTP_401_UNAUTHORIZED)
 
 class IsAdminUser(permissions.BasePermission):

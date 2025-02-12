@@ -1,5 +1,13 @@
-import { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import { createContext, useContext, useState, useCallback } from 'react';
 import axios from 'axios';
+
+// Create an axios instance with the configuration
+const api = axios.create({
+  withCredentials: true,
+  headers: {
+    'Content-Type': 'application/json'
+  }
+});
 
 interface User {
   id: string;
@@ -7,7 +15,10 @@ interface User {
   email: string;
   first_name: string;
   last_name: string;
-  role: 'professor' | 'academic_admin';
+  role: {
+    role: string;
+    discipline: string;
+  };
 }
 
 interface AuthContextType {
@@ -25,41 +36,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return savedUser ? JSON.parse(savedUser) : null;
   });
 
-  // Set up axios defaults
-  useEffect(() => {
-    if (user) {
-      axios.defaults.headers.common['Authorization'] = `Bearer ${localStorage.getItem('token')}`;
-    } else {
-      delete axios.defaults.headers.common['Authorization'];
-    }
-  }, [user]);
-
   const login = useCallback(async (username: string, password: string) => {
     try {
-      // Get CSRF token first
-      await axios.get('/api/csrf/');
-      
-      // Perform login
-      const response = await axios.post('/api/auth/login/', { 
+      const response = await api.post('/api/auth/login/', { 
         username, 
         password 
-      }, {
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        withCredentials: true
       });
 
-      const userData = {
-        ...response.data.user,
-        role: response.data.user.groups[0]
-      };
-
+      const userData = response.data.user;
       setUser(userData);
       localStorage.setItem('user', JSON.stringify(userData));
-      localStorage.setItem('token', response.data.token);
-      
-      axios.defaults.headers.common['Authorization'] = `Bearer ${response.data.token}`;
     } catch (error) {
       console.error('Login error:', error);
       throw new Error('Login failed');
@@ -68,16 +54,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = useCallback(async () => {
     try {
-      await axios.post('/api/auth/logout/', {}, {
-        withCredentials: true
-      });
+      await api.post('/api/auth/logout/');
     } catch (error) {
       console.error('Logout error:', error);
     } finally {
       setUser(null);
       localStorage.removeItem('user');
-      localStorage.removeItem('token');
-      delete axios.defaults.headers.common['Authorization'];
     }
   }, []);
 

@@ -1,7 +1,8 @@
-# backend/fair_eval_backend/run_pipeline.py
+# backend/run_pipeline.py
 
 import os
 import django
+from data_processing.pipeline import run_db_population
 
 # Set up Django environment before importing settings
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'faireval.settings')
@@ -19,8 +20,11 @@ db_config = {
     'port': settings.DATABASES['default']['PORT']
 }
 
-# Remove extra quotes from the CSV path
-csv_file = "professors_75346.csv"
+# # Remove extra quotes from the CSV path
+# csv_file = "professors_75346.csv"
 
-if __name__ == "__main__":
-    run_full_pipeline(csv_file, db_config)
+# if __name__ == "__main__":
+#     run_full_pipeline(csv_file, db_config)
+
+processed_csv = "professors_75346_processed.csv"
+run_db_population(processed_csv, db_config)
