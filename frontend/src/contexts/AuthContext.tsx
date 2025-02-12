@@ -3,10 +3,24 @@ import axios from 'axios';
 
 // Create an axios instance with the configuration
 const api = axios.create({
+  baseURL: '/api',  // Use relative URL
   withCredentials: true,
   headers: {
-    'Content-Type': 'application/json'
+    'Content-Type': 'application/json',
+    'X-Requested-With': 'XMLHttpRequest'
   }
+});
+
+// Add request interceptor to get CSRF token from cookie
+api.interceptors.request.use((config) => {
+  const csrfToken = document.cookie.split('; ')
+    .find(row => row.startsWith('csrftoken='))
+    ?.split('=')[1];
+  
+  if (csrfToken) {
+    config.headers['X-CSRFToken'] = csrfToken;
+  }
+  return config;
 });
 
 interface User {
@@ -38,7 +52,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = useCallback(async (username: string, password: string) => {
     try {
-      const response = await api.post('/api/auth/login/', { 
+      const response = await api.post('/auth/login/', { 
         username, 
         password 
       });
@@ -54,7 +68,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = useCallback(async () => {
     try {
-      await api.post('/api/auth/logout/');
+      await api.post('/auth/logout/');
     } catch (error) {
       console.error('Logout error:', error);
     } finally {

@@ -1,14 +1,18 @@
+from django.utils import timezone
+from datetime import timedelta
 from rest_framework import viewsets, permissions, filters, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
-from django.db.models import Avg
+from django.db.models import Avg, Count, Case, When, Value, CharField, F, Q
+from django.db.models.functions import Cast, ExtractYear, ExtractMonth, Concat
 from django.contrib.auth import login, logout, get_user_model, authenticate
 from .models import UserRole, Department, Professor, Rating, Sentiment
 from .serializers import (
     DepartmentSerializer, ProfessorSerializer, RatingSerializer,
     SentimentSerializer, UserSerializer, UserRoleSerializer
 )
+from .utils import calculate_professor_metrics
 
 User = get_user_model()
 
@@ -111,6 +115,12 @@ class ProfessorViewSet(viewsets.ModelViewSet):
             avg_difficulty=Avg('ratings__difficulty_rating')
         )
 
+    @action(detail=True, methods=['get'])
+    def metrics(self, request, pk=None):
+        """Get detailed metrics for a specific professor"""
+        metrics = calculate_professor_metrics(pk)
+        return Response(metrics)
+
 class RatingViewSet(viewsets.ModelViewSet):
     queryset = Rating.objects.all()
     serializer_class = RatingSerializer
@@ -118,6 +128,57 @@ class RatingViewSet(viewsets.ModelViewSet):
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
     filterset_fields = ['professor', 'class_name', 'is_online', 'is_for_credit']
     ordering_fields = ['created_at', 'avg_rating', 'helpful_rating', 'clarity_rating']
+
+    @action(detail=False, methods=['get'])
+    def stats(self, request):
+        """Get institution-wide rating statistics"""
+        from django.db.models.functions import ExtractYear, ExtractMonth, Concat
+        from django.db.models import Value, CharField
+        
+        # Get total evaluation count using count() instead of loading all records
+        evaluation_count = Rating.objects.count()
+        
+        # Calculate semester stats using database aggregation
+        semester_stats = Rating.objects.annotate(
+            year=ExtractYear('created_at'),
+            month=ExtractMonth('created_at'),
+            semester=Case(
+                When(month__lt=6, then=Concat(
+                    Value('Spring '), Cast('year', CharField())
+                )),
+                default=Concat(
+                    Value('Fall '), Cast('year', CharField())
+                ),
+                output_field=CharField(),
+            )
+        ).values('semester').annotate(
+            score=Avg('avg_rating'),
+            total_evaluations=Count('id')
+        ).order_by('-semester')[:10]  # Limit to last 10 semesters for performance
+        
+        # Calculate overall metrics
+        metrics = Rating.objects.aggregate(
+            avg_rating=Avg('avg_rating'),
+            avg_helpful=Avg('helpful_rating'),
+            avg_clarity=Avg('clarity_rating'),
+            avg_difficulty=Avg('difficulty_rating')
+        )
+        
+        # Calculate trend using a single query
+        thirty_days_ago = timezone.now() - timedelta(days=30)
+        recent_avg = Rating.objects.filter(
+            created_at__gte=thirty_days_ago
+        ).aggregate(
+            recent_avg=Avg('avg_rating')
+        )['recent_avg'] or 0
+        
+        metrics['trend'] = recent_avg - (metrics['avg_rating'] or 0)
+        
+        return Response({
+            'evaluationCount': evaluation_count,
+            'averageScores': list(semester_stats),
+            'metrics': metrics
+        })
 
 class SentimentViewSet(viewsets.ModelViewSet):
     queryset = Sentiment.objects.all()

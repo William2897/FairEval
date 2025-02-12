@@ -18,7 +18,7 @@ services:
       - DB_USER=postgres
       - DB_PASSWORD=password
       - DB_PORT=5432
-      - ALLOWED_HOSTS=localhost,127.0.0.1
+      - ALLOWED_HOSTS=localhost,127.0.0.1, backend
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
     depends_on:
@@ -69,7 +69,7 @@ services:
       - /app/node_modules
       - frontend_build:/app/dist
     environment:
-      - VITE_APP_API_URL=http://localhost:8000/api
+      - VITE_APP_API_URL=http://localhost:8000
     ports:
       - "5173:5173"
 

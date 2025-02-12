@@ -1,34 +1,95 @@
 import { useQuery } from '@tanstack/react-query';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { Loader2 } from 'lucide-react';
+import axios from 'axios';
 import ProfessorSentimentDashboard from '../components/ProfessorSentimentDashboard';
 import { CommentSummaryDisplay } from '../components/CommentSummaryDisplay';
 import { TopicModelVisualization } from '../components/TopicModelVisualization';
 import { RecommendationDisplay } from '../components/RecommendationDisplay';
 import { useAuth } from '../contexts/AuthContext';
 
+interface DashboardStats {
+  evaluationCount: number;
+  averageScores: Array<{
+    semester: string;
+    score: number;
+    total_evaluations: number;
+  }>;
+  metrics?: {
+    avg_rating: number;
+    avg_helpful: number;
+    avg_clarity: number;
+    avg_difficulty: number;
+    trend: number;
+  };
+}
+
 function Dashboard() {
   const { user } = useAuth();
-  const { data: stats, isLoading } = useQuery({
+  const { data: stats, isLoading, isError } = useQuery<DashboardStats>({
     queryKey: ['dashboard-stats'],
     queryFn: async () => {
-      // TODO: Implement API call
-      return {
-        evaluationCount: 150,
-        averageScores: [
-          { semester: 'Fall 2024', score: 4.2 },
-          { semester: 'Spring 2024', score: 4.1 },
-          { semester: 'Fall 2023', score: 3.9 },
-          { semester: 'Spring 2023', score: 4.0 },
-        ],
-      };
+      if (user?.role?.role === 'professor') {
+        const metrics = await axios.get(`/api/professors/${user.id}/metrics/`);
+        const ratingStats = await axios.get(`/api/ratings/?professor=${user.id}&page_size=100`);
+        
+        // Process professor-specific stats
+        const semesterData = ratingStats.data.results.reduce((acc: any, rating: any) => {
+          const date = new Date(rating.created_at);
+          const semester = `${date.getMonth() < 6 ? 'Spring' : 'Fall'} ${date.getFullYear()}`;
+          
+          if (!acc[semester]) {
+            acc[semester] = { total: 0, sum: 0 };
+          }
+          acc[semester].total++;
+          acc[semester].sum += rating.avg_rating;
+          return acc;
+        }, {});
+
+        const averageScores = Object.entries(semesterData)
+          .map(([semester, data]: [string, any]) => ({
+            semester,
+            score: data.sum / data.total,
+            total_evaluations: data.total
+          }))
+          .sort((a, b) => b.semester.localeCompare(a.semester));
+
+        return {
+          evaluationCount: ratingStats.data.count,
+          averageScores,
+          metrics: metrics.data
+        };
+      } else {
+        // For admin users, use the optimized stats endpoint
+        const { data } = await axios.get('/api/ratings/stats/');
+        return data;
+      }
     },
+    retry: 2,
+    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
+    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
   });
 
-  if (isLoading) {
+  if (isError) {
     return (
       <div className="flex items-center justify-center h-64">
-        <Loader2 className="animate-spin" size={32} />
+        <div className="text-red-600">
+          Failed to load dashboard data. Please try refreshing the page.
+        </div>
+      </div>
+    );
+  }
+
+  // Show skeleton loading state instead of spinner
+  if (isLoading) {
+    return (
+      <div className="space-y-6 animate-pulse">
+        <div className="h-8 w-48 bg-gray-200 rounded"></div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className="bg-gray-100 h-32 rounded-lg"></div>
+          ))}
+        </div>
+        <div className="bg-gray-100 h-64 rounded-lg"></div>
       </div>
     );
   }
@@ -41,9 +102,34 @@ function Dashboard() {
         <div className="bg-white p-6 rounded-lg shadow">
           <h3 className="text-lg font-medium text-gray-900">Total Evaluations</h3>
           <p className="text-3xl font-bold text-indigo-600 mt-2">
-            {stats?.evaluationCount}
+            {stats?.evaluationCount || 0}
           </p>
         </div>
+        {stats?.metrics && (
+          <>
+            <div className="bg-white p-6 rounded-lg shadow">
+              <h3 className="text-lg font-medium text-gray-900">Average Rating</h3>
+              <p className="text-3xl font-bold text-indigo-600 mt-2">
+                {stats.metrics.avg_rating.toFixed(2)}
+              </p>
+              <p className={`text-sm ${stats.metrics.trend > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                {stats.metrics.trend > 0 ? '↑' : '↓'} {Math.abs(stats.metrics.trend).toFixed(2)} vs last month
+              </p>
+            </div>
+            <div className="bg-white p-6 rounded-lg shadow">
+              <h3 className="text-lg font-medium text-gray-900">Clarity Score</h3>
+              <p className="text-3xl font-bold text-indigo-600 mt-2">
+                {stats.metrics.avg_clarity.toFixed(2)}
+              </p>
+            </div>
+            <div className="bg-white p-6 rounded-lg shadow">
+              <h3 className="text-lg font-medium text-gray-900">Helpfulness Score</h3>
+              <p className="text-3xl font-bold text-indigo-600 mt-2">
+                {stats.metrics.avg_helpful.toFixed(2)}
+              </p>
+            </div>
+          </>
+        )}
       </div>
 
       <div className="bg-white p-6 rounded-lg shadow">
@@ -56,7 +142,10 @@ function Dashboard() {
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="semester" />
               <YAxis domain={[0, 5]} />
-              <Tooltip />
+              <Tooltip 
+                formatter={(value: number) => [value.toFixed(2), 'Average Score']}
+                labelFormatter={(label: string) => `${label} (${stats?.averageScores.find(s => s.semester === label)?.total_evaluations || 0} evaluations)`}
+              />
               <Bar dataKey="score" fill="#4f46e5" />
             </BarChart>
           </ResponsiveContainer>
@@ -64,7 +153,7 @@ function Dashboard() {
       </div>
 
       {/* Show sentiment dashboard only for professors */}
-      {user?.role === 'professor' && (
+      {user?.role?.role === 'professor' && (
         <>
           <div>
             <h2 className="text-xl font-bold text-gray-900 mb-4">Sentiment Analysis</h2>
