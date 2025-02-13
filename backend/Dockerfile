@@ -25,7 +25,7 @@ RUN chown -R faireval:faireval /home/faireval/nltk_data
 USER faireval
 
 # Download NLTK data to user's home directory
-RUN python -c "import nltk; nltk.data.path.append('/home/faireval/nltk_data'); nltk.download(['vader_lexicon', 'punkt', 'stopwords', 'averaged_perceptron_tagger'], download_dir='/home/faireval/nltk_data')"
+RUN python -c "import nltk; nltk.data.path.append('/home/faireval/nltk_data'); nltk.download(['vader_lexicon', 'opinion_lexicon', 'punkt', 'stopwords', 'averaged_perceptron_tagger'], download_dir='/home/faireval/nltk_data')"
 
 # Install spaCy model
 RUN python -m spacy download en_core_web_sm

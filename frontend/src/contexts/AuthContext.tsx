@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback } from 'react';
+import { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import axios from 'axios';
 
 // Create an axios instance with the configuration
@@ -50,6 +50,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return savedUser ? JSON.parse(savedUser) : null;
   });
 
+  useEffect(() => {
+    // Check authentication on mount
+    const checkAuth = async () => {
+      try {
+        const response = await api.get('/auth/me/');
+        if (response.data.authenticated) {
+          setUser(response.data);
+          localStorage.setItem('user', JSON.stringify(response.data));
+        } else {
+          setUser(null);
+          localStorage.removeItem('user');
+        }
+      } catch (error) {
+        setUser(null);
+        localStorage.removeItem('user');
+      }
+    };
+    checkAuth();
+  }, []);
+
   const login = useCallback(async (username: string, password: string) => {
     try {
       const response = await api.post('/auth/login/', { 
@@ -74,6 +94,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setUser(null);
       localStorage.removeItem('user');
+      // Clear all cookies
+      document.cookie.split(';').forEach(cookie => {
+        document.cookie = cookie
+          .replace(/^ +/, '')
+          .replace(/=.*/, `=;expires=${new Date().toUTCString()};path=/`);
+      });
     }
   }, []);
 

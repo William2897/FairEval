@@ -17,7 +17,7 @@ def run_full_pipeline(csv_path, db_config):
     print("\n--- Stage 2: Data Processing ---")
     df = clean_data(df)
     df = engineer_gender(df)
-    df = map_departments(df)
+    df = map_departments(df)  # This now returns discipline and sub_discipline
     df = preprocess_comments(df)
     
     # Save processed data after Stage 2
@@ -37,64 +37,41 @@ def run_db_population(processed_csv_path, db_config):
     cursor = conn.cursor()
     
     try:
-        # 1. Insert departments with batch processing
-        dept_data = df[['department', 'discipline', 'sub_discipline']].drop_duplicates()
-        insert_departments_sql = """
-            INSERT INTO api_department (name, discipline, sub_discipline)
-            VALUES (%s, %s, %s)
-            ON CONFLICT (name) DO NOTHING
-        """
-        cursor.executemany(insert_departments_sql, dept_data.values.tolist())
-        conn.commit()
-
-        # Add after department insertion
-        cursor.execute("SELECT COUNT(*) FROM api_department")
-        dept_count = cursor.fetchone()[0]
-        if dept_count == 0:
-            raise Exception("No departments were inserted. Check department data.")
-
-        # Then proceed with professor insertion
+        # 1. Insert professors with discipline information
         prof_data = df[['professor_id', 'first_name', 'last_name', 'gender', 
-                        'department', 'would_take_again_percent']].drop_duplicates()
+                        'discipline', 'sub_discipline']].drop_duplicates()
 
-        # 2. Insert professors with batch processing (updated to include would_take_again_percent)
         insert_professors_sql = """
-            WITH dept_id AS (
-                SELECT id FROM api_department WHERE name = %s LIMIT 1
-            )
             INSERT INTO api_professor (
                 professor_id, first_name, last_name, gender,
-                would_take_again_percent, department_id
+                discipline, sub_discipline
             )
-            SELECT 
-                %s, %s, %s, %s, %s, d.id
-            FROM dept_id d
-            WHERE EXISTS (SELECT 1 FROM dept_id)
+            VALUES (%s, %s, %s, %s, %s, %s)
             ON CONFLICT (professor_id) DO NOTHING
         """
         cursor.executemany(insert_professors_sql, 
-                          [(row['department'], row['professor_id'], row['first_name'], 
-                            row['last_name'], row['gender'], row['would_take_again_percent']) 
+                          [(row['professor_id'], row['first_name'], row['last_name'],
+                            row['gender'], row['discipline'], row['sub_discipline']) 
                            for _, row in prof_data.iterrows()])
         conn.commit()
 
-        # 2.1 Create users for professors
+        # 2. Create users for professors
         insert_users_sql = """
             INSERT INTO auth_user (
                 username, first_name, last_name, email,
                 password, is_staff, is_active, date_joined,
-                is_superuser  -- Add this field
+                is_superuser
             )
             SELECT 
-                p.professor_id,  -- username
+                p.professor_id,
                 p.first_name,
                 p.last_name,
-                LOWER(CONCAT(p.first_name, '.', p.last_name, '@institution.edu')),  -- email
-                'pbkdf2_sha256$600000$default_hash',  -- default hashed password
-                TRUE,  -- is_staff
-                TRUE,  -- is_active
-                NOW(),  -- date_joined
-                FALSE   -- is_superuser (set to false by default)
+                LOWER(CONCAT(p.first_name, '.', p.last_name, '@institution.edu')),
+                'pbkdf2_sha256$600000$default_hash',
+                TRUE,
+                TRUE,
+                NOW(),
+                FALSE
             FROM api_professor p
             LEFT JOIN auth_user u ON u.username = p.professor_id
             WHERE u.id IS NULL
@@ -104,7 +81,7 @@ def run_db_population(processed_csv_path, db_config):
         user_mappings = cursor.fetchall()
         conn.commit()
 
-        # 2.2 Assign roles (20% Admin, 80% Academic)
+        # 2.1 Assign roles (20% Admin, 80% Academic)
         admin_count = int(len(user_mappings) * 0.2)
         insert_roles_sql = """
             INSERT INTO api_userrole (user_id, role, discipline)
@@ -114,17 +91,16 @@ def run_db_population(processed_csv_path, db_config):
                     WHEN ROW_NUMBER() OVER (ORDER BY RANDOM()) <= %s THEN 'ADMIN'
                     ELSE 'ACADEMIC'
                 END,
-                d.discipline  -- Get discipline from department table
+                p.discipline  -- Get discipline directly from professor table
             FROM auth_user u
             JOIN api_professor p ON p.professor_id = u.username
-            JOIN api_department d ON d.id = p.department_id
             LEFT JOIN api_userrole ur ON ur.user_id = u.id
             WHERE ur.id IS NULL
         """
         cursor.execute(insert_roles_sql, (admin_count,))
         conn.commit()
 
-        # 3. Modified ratings insertion with correct schema
+        # 3. Insert ratings
         batch_size = 5000
         insert_ratings_sql = """
             INSERT INTO api_rating (
@@ -162,18 +138,23 @@ def run_db_population(processed_csv_path, db_config):
             JOIN api_professor p ON p.professor_id = r.prof_id
         """
 
-        # 4. Add sentiment table insertion
+        # 4. Insert sentiments
         insert_sentiment_sql = """
             INSERT INTO api_sentiment (
                 professor_id, comment, processed_comment,
-                sentiment, created_at
+                sentiment, created_at, 
+                positive_terms, negative_terms,
+                vader_compound, vader_positive,
+                vader_negative, vader_neutral
             )
             SELECT 
-                u.id,  -- Use auth_user id instead of professor id
+                p.id,
                 s.comment,
                 s.proc_comment,
                 NULL,  -- sentiment will be computed later
-                s.created_at
+                s.created_at,
+                NULL, NULL,  -- positive/negative terms
+                NULL, NULL, NULL, NULL  -- VADER scores
             FROM (
                 SELECT * FROM unnest(
                     %s::text[],       -- professor_id
@@ -185,8 +166,6 @@ def run_db_population(processed_csv_path, db_config):
                 )
             ) s
             JOIN api_professor p ON p.professor_id = s.prof_id
-            JOIN auth_user u ON u.username = p.professor_id  -- Join to get the auth_user id
-            WHERE u.id IS NOT NULL
         """
         
         current_time = datetime.now()
@@ -210,7 +189,7 @@ def run_db_population(processed_csv_path, db_config):
                 is_for_credits, timestamps
             ))
 
-            # Execute sentiment insertion with proper foreign key references
+            # Execute sentiment insertion
             cursor.execute(insert_sentiment_sql, (
                 prof_ids,
                 chunk['rating_comment'].tolist(),

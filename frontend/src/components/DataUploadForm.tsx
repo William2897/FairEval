@@ -33,6 +33,7 @@ export const DataUploadForm: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ['professors'] });
       queryClient.invalidateQueries({ queryKey: ['departmentStats'] });
       queryClient.invalidateQueries({ queryKey: ['sentiment-analysis'] });
+      queryClient.invalidateQueries({ queryKey: ['discipline-stats'] });
     },
   });
 

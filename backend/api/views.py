@@ -4,15 +4,15 @@ from rest_framework import viewsets, permissions, filters, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
-from django.db.models import Avg, Count, Case, When, Value, CharField, F, Q
-from django.db.models.functions import Cast, ExtractYear, ExtractMonth, Concat
+from django.db.models import Avg, Count, Case, When
+from django.db.models.functions import Cast
 from django.contrib.auth import login, logout, get_user_model, authenticate
-from .models import UserRole, Department, Professor, Rating, Sentiment
+from .models import Professor, Rating, Sentiment, UserRole
 from .serializers import (
-    DepartmentSerializer, ProfessorSerializer, RatingSerializer,
+    ProfessorSerializer, RatingSerializer,
     SentimentSerializer, UserSerializer, UserRoleSerializer
 )
-from .utils import calculate_professor_metrics, analyze_department_bias
+from .utils import calculate_professor_metrics, analyze_discipline_ratings, analyze_discipline_gender_distribution, perform_discipline_tukey_hsd, calculate_gender_distribution
 
 User = get_user_model()
 
@@ -61,27 +61,32 @@ class AuthViewSet(viewsets.GenericViewSet):  # Changed from ViewSet to GenericVi
     @action(detail=False, methods=['post'])
     def logout(self, request):
         logout(request)
-        return Response({'message': 'Logged out successfully'})
+        response = Response({'message': 'Logged out successfully'})
+        response.delete_cookie('sessionid')
+        response.delete_cookie('csrftoken')
+        return response
 
     @action(detail=False, methods=['get'])
     def me(self, request):
-        if request.user.is_authenticated:
-            try:
-                user_role = UserRole.objects.get(user=request.user)
-                role_data = {"role": user_role.role, "discipline": user_role.discipline}
-            except UserRole.DoesNotExist:
-                role_data = None
-                
-            user_data = {
-                "id": request.user.id,
-                "username": request.user.username,
-                "email": request.user.email,
-                "first_name": request.user.first_name,
-                "last_name": request.user.last_name,
-                "role": role_data
-            }
-            return Response(user_data)
-        return Response(status=status.HTTP_401_UNAUTHORIZED)
+        if not request.user.is_authenticated:
+            return Response({'authenticated': False}, status=status.HTTP_401_UNAUTHORIZED)
+            
+        try:
+            user_role = UserRole.objects.get(user=request.user)
+            role_data = {"role": user_role.role, "discipline": user_role.discipline}
+        except UserRole.DoesNotExist:
+            role_data = None
+            
+        user_data = {
+            "id": request.user.id,
+            "username": request.user.username,
+            "email": request.user.email,
+            "first_name": request.user.first_name,
+            "last_name": request.user.last_name,
+            "role": role_data,
+            "authenticated": True
+        }
+        return Response(user_data)
 
 class IsAdminUser(permissions.BasePermission):
     def has_permission(self, request, view):
@@ -89,58 +94,14 @@ class IsAdminUser(permissions.BasePermission):
                    hasattr(request.user, 'role') and request.user.role.role == 'ADMIN')
 
 # Base viewsets without role checks for now
-class DepartmentViewSet(viewsets.ModelViewSet):
-    queryset = Department.objects.all().order_by('name')
-    serializer_class = DepartmentSerializer
-    permission_classes = [permissions.IsAuthenticated]
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
-    search_fields = ['name', 'discipline', 'sub_discipline']
-    ordering_fields = ['name', 'discipline']
-
-    @action(detail=False, methods=['get'])
-    def stats(self, request):
-        """Get statistics for all departments"""
-        departments = Department.objects.all()
-        stats = {}
-        
-        for dept in departments:
-            dept_stats = {
-                'professorCount': Professor.objects.filter(department=dept).count(),
-                'avgRating': Rating.objects.filter(
-                    professor__department=dept
-                ).aggregate(avg=Avg('avg_rating'))['avg'] or 0
-            }
-            stats[dept.id] = dept_stats
-            
-        return Response(stats)
-
-    @action(detail=False, methods=['get'], url_path='bias/gender')
-    def gender_bias(self, request):
-        departments = Department.objects.all()
-        results = []
-        
-        for dept in departments:
-            bias_data = analyze_department_bias(dept.id)
-            if bias_data['male_stats']['total_ratings'] > 0 and bias_data['female_stats']['total_ratings'] > 0:
-                results.append({
-                    'department_name': dept.name,
-                    'male_avg_rating': bias_data['male_stats']['avg_rating'],
-                    'female_avg_rating': bias_data['female_stats']['avg_rating'],
-                    'rating_difference': bias_data['male_stats']['avg_rating'] - bias_data['female_stats']['avg_rating'],
-                    'sample_size_male': bias_data['male_stats']['total_ratings'],
-                    'sample_size_female': bias_data['female_stats']['total_ratings']
-                })
-        
-        return Response(results)
-
 class ProfessorViewSet(viewsets.ModelViewSet):
     queryset = Professor.objects.all()
     serializer_class = ProfessorSerializer
     permission_classes = [permissions.IsAuthenticated]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    filterset_fields = ['department', 'gender']
-    search_fields = ['first_name', 'last_name']
-    ordering_fields = ['last_name', 'would_take_again_percent']
+    filterset_fields = ['discipline', 'sub_discipline', 'gender']
+    search_fields = ['first_name', 'last_name', 'discipline', 'sub_discipline']
+    ordering_fields = ['last_name', 'discipline']
 
     def get_queryset(self):
         queryset = Professor.objects.all()
@@ -157,6 +118,25 @@ class ProfessorViewSet(viewsets.ModelViewSet):
         metrics = calculate_professor_metrics(pk)
         return Response(metrics)
 
+    @action(detail=False, methods=['get'])
+    def discipline_stats(self, request):
+        """Get statistical analysis of ratings by discipline"""
+        discipline_stats = analyze_discipline_ratings()
+        gender_stats = analyze_discipline_gender_distribution()
+        tukey_results = perform_discipline_tukey_hsd()
+        
+        return Response({
+            'discipline_ratings': discipline_stats,
+            'gender_distribution': gender_stats,
+            'statistical_tests': tukey_results
+        })
+
+    @action(detail=False, methods=['get'])
+    def gender_distribution(self, request):
+        """Get gender distribution analysis for top/bottom rated disciplines"""
+        distribution_stats = calculate_gender_distribution()
+        return Response(distribution_stats)
+
 class RatingViewSet(viewsets.ModelViewSet):
     queryset = Rating.objects.all()
     serializer_class = RatingSerializer
@@ -168,29 +148,8 @@ class RatingViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'])
     def stats(self, request):
         """Get institution-wide rating statistics"""
-        from django.db.models.functions import ExtractYear, ExtractMonth, Concat
-        from django.db.models import Value, CharField
-        
         # Get total evaluation count using count() instead of loading all records
         evaluation_count = Rating.objects.count()
-        
-        # Calculate semester stats using database aggregation
-        semester_stats = Rating.objects.annotate(
-            year=ExtractYear('created_at'),
-            month=ExtractMonth('created_at'),
-            semester=Case(
-                When(month__lt=6, then=Concat(
-                    Value('Spring '), Cast('year', CharField())
-                )),
-                default=Concat(
-                    Value('Fall '), Cast('year', CharField())
-                ),
-                output_field=CharField(),
-            )
-        ).values('semester').annotate(
-            score=Avg('avg_rating'),
-            total_evaluations=Count('id')
-        ).order_by('-semester')[:10]  # Limit to last 10 semesters for performance
         
         # Calculate overall metrics
         metrics = Rating.objects.aggregate(
@@ -212,7 +171,6 @@ class RatingViewSet(viewsets.ModelViewSet):
         
         return Response({
             'evaluationCount': evaluation_count,
-            'averageScores': list(semester_stats),
             'metrics': metrics
         })
 

@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
 from django.contrib.auth import authenticate
-from .models import Department, Professor, Rating, Sentiment, UserRole
+from .models import Professor, Rating, Sentiment, UserRole
 
 class UserRoleSerializer(serializers.ModelSerializer):
     class Meta:
@@ -26,20 +26,18 @@ class UserSerializer(serializers.ModelSerializer):
         fields = ['id', 'username', 'email', 'first_name', 'last_name', 'role']
         read_only_fields = ['email']
 
-class DepartmentSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Department
-        fields = '__all__'
-
 class ProfessorSerializer(serializers.ModelSerializer):
-    department_name = serializers.CharField(source='department.name', read_only=True)
-    ratings_count = serializers.IntegerField(source='ratings.count', read_only=True)
-    avg_helpful_rating = serializers.FloatField(source='ratings.aggregate.avg_helpful_rating', read_only=True)
-    avg_clarity_rating = serializers.FloatField(source='ratings.aggregate.avg_clarity_rating', read_only=True)
+    ratings_count = serializers.IntegerField(read_only=True)
+    avg_rating = serializers.FloatField(read_only=True)
+    avg_helpful = serializers.FloatField(read_only=True)
+    avg_clarity = serializers.FloatField(read_only=True)
+    avg_difficulty = serializers.FloatField(read_only=True)
 
     class Meta:
         model = Professor
-        fields = '__all__'
+        fields = ['id', 'professor_id', 'first_name', 'last_name', 'gender', 
+                 'discipline', 'sub_discipline', 'ratings_count', 'avg_rating',
+                 'avg_helpful', 'avg_clarity', 'avg_difficulty']
 
 class RatingSerializer(serializers.ModelSerializer):
     professor_name = serializers.CharField(source='professor.first_name', read_only=True)

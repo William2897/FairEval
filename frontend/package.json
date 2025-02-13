@@ -12,6 +12,7 @@
   "dependencies": {
     "@tanstack/react-query": "^5.24.1",
     "@tanstack/react-query-devtools": "^5.24.1",
+    "@visx/wordcloud": "^3.3.0",
     "axios": "^1.6.7",
     "lucide-react": "0.475.0",
     "react": "18.3.1",
@@ -19,16 +20,17 @@
     "react-hook-form": "^7.50.1",
     "react-router-dom": "6.29.0",
     "recharts": "^2.12.1",
+    "tippy.js": "^6.3.7",
     "zod": "^3.22.4"
   },
   "devDependencies": {
     "@eslint/config-array": "0.19.2",
+    "@eslint/eslintrc": "3.2.0",
     "@eslint/object-schema": "2.1.6",
     "@types/react": "^18.2.55",
     "@types/react-dom": "^18.2.19",
     "@vitejs/plugin-react": "^4.2.1",
     "autoprefixer": "^10.4.17",
-    "@eslint/eslintrc": "3.2.0",
     "eslint": "^8.56.0",
     "eslint-plugin-react-hooks": "^4.6.0",
     "eslint-plugin-react-refresh": "^0.4.5",

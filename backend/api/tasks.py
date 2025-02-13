@@ -28,7 +28,8 @@ def process_rating_upload(ratings_data):
 @shared_task
 def analyze_comments_sentiment(professor_id):
     """Analyze sentiment for a professor's ratings comments"""
-    analyzer = SentimentIntensityAnalyzer()
+    from data_processing.text_preprocessing import get_vader_sentiment, extract_opinion_terms
+    
     ratings = Rating.objects.filter(
         professor_id=professor_id,
         flag_status__isnull=True  # Only analyze unflagged comments
@@ -38,27 +39,42 @@ def analyze_comments_sentiment(professor_id):
         if not rating.comment:
             continue
             
-        # Use both VADER and TextBlob for better accuracy
-        vader_scores = analyzer.polarity_scores(rating.comment)
-        textblob_sentiment = TextBlob(rating.comment).sentiment
+        # Get VADER scores
+        vader_scores = get_vader_sentiment(rating.comment)
         
-        # Combine both sentiment scores
-        combined_sentiment = (vader_scores['compound'] + textblob_sentiment.polarity) / 2
+        # Get opinion lexicon terms
+        processed_tokens = rating.comment.lower().split()
+        pos_terms, neg_terms = extract_opinion_terms(processed_tokens)
+        
+        # Calculate overall sentiment (combine VADER compound with lexicon ratio)
+        lexicon_ratio = (len(pos_terms) - len(neg_terms)) / (len(pos_terms) + len(neg_terms) + 1)
+        combined_sentiment = (vader_scores['compound'] + lexicon_ratio) / 2
         
         Sentiment.objects.create(
             professor_id=professor_id,
             comment=rating.comment,
-            processed_comment=rating.comment,  # You could add text cleaning here
-            sentiment=combined_sentiment
+            processed_comment=' '.join(processed_tokens),
+            sentiment=combined_sentiment,
+            vader_compound=vader_scores['compound'],
+            vader_positive=vader_scores['pos'],
+            vader_negative=vader_scores['neg'],
+            vader_neutral=vader_scores['neu'],
+            positive_terms=pos_terms,
+            negative_terms=neg_terms
         )
     
     # Generate new recommendations based on updated sentiment
     generate_recommendations(professor_id)
 
-@shared_task
-def update_department_analytics(department_id):
-    """Update analytics for an entire department"""
-    professors = Professor.objects.filter(department_id=department_id)
+def calculate_discipline_analytics(discipline):
+    """Update analytics for an entire discipline"""
+    professors = Professor.objects.filter(discipline=discipline)
     for professor in professors:
         calculate_professor_metrics(professor.id)
         analyze_comments_sentiment.delay(professor.id)  # Async for each professor
+
+# Remove department-specific task and use discipline-based one instead
+@shared_task
+def update_discipline_analytics(discipline):
+    """Update analytics for a discipline"""
+    calculate_discipline_analytics(discipline)

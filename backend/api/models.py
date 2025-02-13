@@ -1,35 +1,24 @@
 from django.db import models
 from django.contrib.auth.models import User
+from django.core.validators import MinValueValidator, MaxValueValidator
 
-class Department(models.Model):
-    name = models.CharField(max_length=200, unique=True, db_index=True)
-    discipline = models.CharField(max_length=200, db_index=True)
-    sub_discipline = models.CharField(max_length=200, null=True, blank=True)
-
+class Professor(models.Model):
+    professor_id = models.CharField(max_length=50, unique=True, default='PID000000')
+    first_name = models.CharField(max_length=100)
+    last_name = models.CharField(max_length=100)
+    gender = models.CharField(max_length=10, null=True)  # Increased length to handle existing data
+    discipline = models.CharField(max_length=100, db_index=True, default='Interdisciplinary Studies')
+    sub_discipline = models.CharField(max_length=100, null=True, db_index=True)
+    
     class Meta:
         indexes = [
             models.Index(fields=['discipline', 'sub_discipline']),
+            models.Index(fields=['gender', 'discipline']),
         ]
+        ordering = ['last_name', 'first_name']
 
     def __str__(self):
-        return f"{self.name} - {self.discipline} - {self.sub_discipline}"
-
-class Professor(models.Model):
-    professor_id = models.CharField(max_length=50, unique=True, null=True, blank=True)
-    first_name = models.CharField(max_length=100, db_index=True)
-    last_name = models.CharField(max_length=100, db_index=True)
-    gender = models.CharField(max_length=50, null=True, db_index=True)
-    department = models.ForeignKey(Department, on_delete=models.SET_NULL, null=True)
-    would_take_again_percent = models.FloatField(null=True)
-
-    class Meta:
-        indexes = [
-            models.Index(fields=['department', 'gender']),
-            models.Index(fields=['last_name', 'first_name']),
-        ]
-
-    def __str__(self):
-        return f"{self.first_name} - {self.last_name} - {self.gender} - {self.department}"
+        return f"{self.first_name} {self.last_name} ({self.discipline})"
 
 class Rating(models.Model):
     professor = models.ForeignKey(Professor, on_delete=models.CASCADE, related_name='ratings')
@@ -56,7 +45,13 @@ class Sentiment(models.Model):
     professor = models.ForeignKey(User, on_delete=models.CASCADE, related_name='sentiment')
     comment = models.TextField(null=True)
     processed_comment = models.TextField(null=True)
-    sentiment = models.IntegerField(null=True, db_index=True)
+    sentiment = models.FloatField(null=True, db_index=True)
+    vader_compound = models.FloatField(null=True)
+    vader_positive = models.FloatField(null=True)
+    vader_negative = models.FloatField(null=True)
+    vader_neutral = models.FloatField(null=True)
+    positive_terms = models.JSONField(null=True)
+    negative_terms = models.JSONField(null=True)
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
 
     class Meta:

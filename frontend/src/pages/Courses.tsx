@@ -1,20 +1,20 @@
 import { useQuery } from '@tanstack/react-query';
+import axios from 'axios';
 import { Loader2, Search, Plus } from 'lucide-react';
 
 interface Course {
   id: number;
-  code: string;
-  title: string;
-  department: string;
-  description: string;
+  name: string;
+  discipline: string;
+  sub_discipline: string | null;
 }
 
 function Courses() {
   const { data: courses, isLoading } = useQuery<Course[]>({
     queryKey: ['courses'],
     queryFn: async () => {
-      // TODO: Implement API call
-      return [];
+      const { data } = await axios.get('/api/courses/');
+      return Array.isArray(data) ? data : data?.results || [];
     },
   });
 
@@ -51,15 +51,15 @@ function Courses() {
           <div key={course.id} className="bg-white rounded-lg shadow-md p-6">
             <div className="flex justify-between items-start">
               <div>
-                <h3 className="text-lg font-semibold text-gray-900">{course.code}</h3>
-                <p className="text-sm text-gray-500">{course.department}</p>
+                <h3 className="text-lg font-semibold text-gray-900">{course.name}</h3>
+                <p className="text-sm text-gray-500">{course.discipline}</p>
+                {course.sub_discipline && (
+                  <p className="text-sm text-gray-500">
+                    Specialization: {course.sub_discipline}
+                  </p>
+                )}
               </div>
             </div>
-            <h4 className="mt-2 font-medium text-gray-900">{course.title}</h4>
-            <p className="mt-2 text-sm text-gray-600 line-clamp-3">{course.description}</p>
-            <button className="mt-4 text-sm text-indigo-600 hover:text-indigo-800">
-              View Details →
-            </button>
           </div>
         ))}
       </div>
@@ -67,4 +67,4 @@ function Courses() {
   );
 }
 
-export default Courses
+export default Courses;

@@ -3,7 +3,6 @@ import { Loader2, Search, Filter, AlertOctagon } from 'lucide-react';
 import { useState } from 'react';
 import { CommentSummaryDisplay } from '../components/CommentSummaryDisplay';
 import { DataUploadForm } from '../components/DataUploadForm';
-import { DepartmentGenderBiasDashboard } from '../components/DepartmentGenderBiasDashboard';
 import { TopicModelVisualization } from '../components/TopicModelVisualization';
 import { RecommendationDisplay } from '../components/RecommendationDisplay';
 import { useAuth } from '../contexts/AuthContext';
@@ -69,11 +68,6 @@ function Evaluations() {
       {user?.role.role === 'ADMIN' && (
         <>
           <DataUploadForm />
-          
-          <div className="bg-white rounded-lg shadow p-6">
-            <h2 className="text-xl font-semibold text-gray-900 mb-6">Bias Analysis</h2>
-            <DepartmentGenderBiasDashboard />
-          </div>
 
           <div className="bg-white rounded-lg shadow p-6">
             <h2 className="text-xl font-semibold text-gray-900 mb-6">Institution-wide Topic Analysis</h2>

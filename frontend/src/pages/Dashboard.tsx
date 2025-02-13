@@ -1,19 +1,14 @@
 import { useQuery } from '@tanstack/react-query';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import axios from 'axios';
 import ProfessorSentimentDashboard from '../components/ProfessorSentimentDashboard';
 import { CommentSummaryDisplay } from '../components/CommentSummaryDisplay';
 import { TopicModelVisualization } from '../components/TopicModelVisualization';
 import { RecommendationDisplay } from '../components/RecommendationDisplay';
+import { DisciplineAnalysisDashboard } from '../components/DisciplineAnalysisDashboard';
 import { useAuth } from '../contexts/AuthContext';
 
 interface DashboardStats {
   evaluationCount: number;
-  averageScores: Array<{
-    semester: string;
-    score: number;
-    total_evaluations: number;
-  }>;
   metrics?: {
     avg_rating: number;
     avg_helpful: number;
@@ -32,34 +27,11 @@ function Dashboard() {
         const metrics = await axios.get(`/api/professors/${user.id}/metrics/`);
         const ratingStats = await axios.get(`/api/ratings/?professor=${user.id}&page_size=100`);
         
-        // Process professor-specific stats
-        const semesterData = ratingStats.data.results.reduce((acc: any, rating: any) => {
-          const date = new Date(rating.created_at);
-          const semester = `${date.getMonth() < 6 ? 'Spring' : 'Fall'} ${date.getFullYear()}`;
-          
-          if (!acc[semester]) {
-            acc[semester] = { total: 0, sum: 0 };
-          }
-          acc[semester].total++;
-          acc[semester].sum += rating.avg_rating;
-          return acc;
-        }, {});
-
-        const averageScores = Object.entries(semesterData)
-          .map(([semester, data]: [string, any]) => ({
-            semester,
-            score: data.sum / data.total,
-            total_evaluations: data.total
-          }))
-          .sort((a, b) => b.semester.localeCompare(a.semester));
-
         return {
           evaluationCount: ratingStats.data.count,
-          averageScores,
           metrics: metrics.data
         };
       } else {
-        // For admin users, use the optimized stats endpoint
         const { data } = await axios.get('/api/ratings/stats/');
         return data;
       }
@@ -95,7 +67,7 @@ function Dashboard() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8 p-6">
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
@@ -146,24 +118,10 @@ function Dashboard() {
         )}
       </div>
 
-      <div className="bg-white p-6 rounded-lg shadow">
-        <h3 className="text-lg font-medium text-gray-900 mb-4">
-          Average Scores by Semester
-        </h3>
-        <div className="h-64">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={stats?.averageScores}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="semester" />
-              <YAxis domain={[0, 5]} />
-              <Tooltip 
-                formatter={(value: number) => [value.toFixed(2), 'Average Score']}
-                labelFormatter={(label: string) => `${label} (${stats?.averageScores.find(s => s.semester === label)?.total_evaluations || 0} evaluations)`}
-              />
-              <Bar dataKey="score" fill="#4f46e5" />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
+      {/* Discipline Analysis Section */}
+      <div>
+        <h2 className="text-xl font-bold text-gray-900 mb-4">Discipline Analysis</h2>
+        <DisciplineAnalysisDashboard />
       </div>
 
       {/* Show sentiment dashboard only for professors */}

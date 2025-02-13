@@ -4,12 +4,21 @@ import unicodedata
 import pandas as pd
 import spacy
 import torch
-from nltk.corpus import stopwords
+from nltk.corpus import stopwords, opinion_lexicon
+from nltk.sentiment.vader import SentimentIntensityAnalyzer
 import contractions
 from tqdm import tqdm
+from collections import Counter
 
 # Simple memory-efficient cache
 text_cache = {}
+
+# Initialize VADER
+sia = SentimentIntensityAnalyzer()
+
+# Initialize opinion lexicon sets
+positive_words = set(opinion_lexicon.positive())
+negative_words = set(opinion_lexicon.negative())
 
 # Optimize spaCy pipeline - keep tagger for better lemmatization
 nlp = spacy.load("en_core_web_sm", disable=["ner", "parser", "textcat"])
@@ -118,6 +127,41 @@ def preprocess_comments(df):
     finally:
         text_cache.clear()
         gc.collect()
+
+def extract_opinion_terms(tokens):
+    """Extract positive and negative terms from tokens using NLTK opinion lexicon"""
+    pos_terms = [word for word in tokens if word in positive_words]
+    neg_terms = [word for word in tokens if word in negative_words]
+    return pos_terms, neg_terms
+
+def get_vader_sentiment(text):
+    """Get VADER sentiment scores for a text"""
+    return sia.polarity_scores(text)
+
+def analyze_sentiment(df):
+    """Analyze sentiment using both VADER and opinion lexicon"""
+    # Process comments to get tokens
+    processed_comments = df['processed_comment'].apply(lambda x: x.split() if isinstance(x, str) else [])
+    
+    # Opinion lexicon analysis
+    df[['positive_terms_lexicon', 'negative_terms_lexicon']] = processed_comments.apply(
+        lambda x: pd.Series(extract_opinion_terms(x))
+    )
+    
+    # VADER analysis
+    df['vader_scores'] = df['rating_comment'].apply(get_vader_sentiment)
+    
+    # Get word frequencies
+    positive_counter = Counter()
+    negative_counter = Counter()
+    
+    for sublist in df['positive_terms_lexicon']:
+        positive_counter.update([term for term in sublist if pd.notnull(term)])
+    
+    for sublist in df['negative_terms_lexicon']:
+        negative_counter.update([term for term in sublist if pd.notnull(term)])
+    
+    return df, positive_counter, negative_counter
 
 if __name__ == '__main__':
     # Clear GPU memory if using CUDA

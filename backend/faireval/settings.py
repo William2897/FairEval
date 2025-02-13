@@ -172,10 +172,15 @@ CSRF_TRUSTED_ORIGINS = [
 
 CSRF_COOKIE_SAMESITE = 'Lax'
 SESSION_COOKIE_SAMESITE = 'Lax'
-CSRF_COOKIE_HTTPONLY = True
+CSRF_COOKIE_HTTPONLY = False  # Allow JavaScript access to CSRF cookie
 SESSION_COOKIE_HTTPONLY = True
-SESSION_COOKIE_SECURE = True
-CSRF_COOKIE_SECURE = True
+SESSION_COOKIE_SECURE = False  # Allow HTTP in development
+CSRF_COOKIE_SECURE = False    # Allow HTTP in development
+
+if not DEBUG:
+    # Use secure cookies in production
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
 
 # API Documentation
 SPECTACULAR_SETTINGS = {
@@ -199,5 +204,9 @@ CELERY_BEAT_SCHEDULE = {
     'update-department-analytics': {
         'task': 'api.tasks.update_department_analytics',
         'schedule': crontab(hour=0, minute=0),  # Run daily at midnight
+    },
+    'update-discipline-analytics': {
+        'task': 'api.tasks.update_discipline_analytics',
+        'schedule': crontab(minute='0', hour='*/4'),  # Run every 4 hours
     },
 }

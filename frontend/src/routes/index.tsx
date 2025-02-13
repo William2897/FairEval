@@ -1,30 +1,55 @@
-import { Routes, Route, Navigate } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
+import React from 'react';
+import { createBrowserRouter, Navigate, Outlet } from 'react-router-dom';
 import Login from '../pages/Login';
 import Dashboard from '../pages/Dashboard';
 import Evaluations from '../pages/Evaluations';
-import Courses from '../pages/Courses';
-import Departments from '../pages/Departments';
+import Settings from '../pages/Settings';
+import Layout from '../components/Layout';
 import NotFound from '../pages/NotFound';
+import { useAuth } from '../contexts/AuthContext';
 
-function PrivateRoute({ children }: { children: React.ReactNode }) {
+interface PrivateRouteProps {
+  children: React.ReactNode;
+}
+
+function PrivateRoute({ children }: PrivateRouteProps) {
   const { isAuthenticated } = useAuth();
   return isAuthenticated ? <>{children}</> : <Navigate to="/login" />;
 }
 
-function AppRoutes() {
-  return (
-    <Routes>
-      <Route path="/login" element={<Login />} />
-      
-      <Route path="/" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
-      <Route path="/evaluations" element={<PrivateRoute><Evaluations /></PrivateRoute>} />
-      <Route path="/courses" element={<PrivateRoute><Courses /></PrivateRoute>} />
-      <Route path="/departments" element={<PrivateRoute><Departments /></PrivateRoute>} />
-      
-      <Route path="*" element={<NotFound />} />
-    </Routes>
-  );
-}
+const router = createBrowserRouter([
+  {
+    path: '/',
+    element: (
+      <Layout>
+        <PrivateRoute>
+          <Outlet />
+        </PrivateRoute>
+      </Layout>
+    ),
+    children: [
+      {
+        index: true,
+        element: <Dashboard />,
+      },
+      {
+        path: 'evaluations',
+        element: <Evaluations />,
+      },
+      {
+        path: 'settings',
+        element: <Settings />,
+      }
+    ],
+  },
+  {
+    path: '/login',
+    element: <Login />,
+  },
+  {
+    path: '*',
+    element: <NotFound />,
+  }
+]);
 
-export default AppRoutes;
+export default router;

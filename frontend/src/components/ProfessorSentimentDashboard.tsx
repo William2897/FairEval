@@ -1,6 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { Loader2 } from 'lucide-react';
+import { WordCloudVisualization } from './WordCloudVisualization';
+import { GenderSentimentVisualization } from './GenderSentimentVisualization';
 
 interface SentimentData {
   sentiment_counts: {
@@ -16,35 +18,31 @@ interface SentimentData {
     positive: Array<{ word: string; count: number }>;
     negative: Array<{ word: string; count: number }>;
   };
+  gender_analysis: {
+    positive_terms: Array<{
+      term: string;
+      male_freq: number;
+      female_freq: number;
+      bias: 'Male' | 'Female';
+    }>;
+    negative_terms: Array<{
+      term: string;
+      male_freq: number;
+      female_freq: number;
+      bias: 'Male' | 'Female';
+    }>;
+  };
   recent_sentiments: Array<{
     comment: string;
     processed_comment: string;
     sentiment: number;
     created_at: string;
+    vader_compound: number;
   }>;
 }
 
 interface Props {
   professorId: string;
-}
-
-function WordGrid({ words }: { words: Array<{ word: string; count: number }> }) {
-  return (
-    <div className="grid grid-cols-3 gap-2">
-      {words.map(({ word, count }) => (
-        <div
-          key={word}
-          className="p-2 rounded-lg text-center"
-          style={{
-            fontSize: `${Math.max(0.8 + (count / 10) * 0.4, 1)}rem`,
-            backgroundColor: `rgba(79, 70, 229, ${Math.min(count / 20, 0.2)})`,
-          }}
-        >
-          {word}
-        </div>
-      ))}
-    </div>
-  );
 }
 
 function ProfessorSentimentDashboard({ professorId }: Props) {
@@ -102,8 +100,7 @@ function ProfessorSentimentDashboard({ professorId }: Props) {
               <Tooltip />
               <Bar
                 dataKey="count"
-                fill="#4f46e5"
-                radius={[4, 4, 0, 0]}
+                fill="#6366F1"
               />
             </BarChart>
           </ResponsiveContainer>
@@ -124,21 +121,41 @@ function ProfessorSentimentDashboard({ professorId }: Props) {
               <Tooltip />
               <Bar
                 dataKey="score"
-                fill="#4f46e5"
-                radius={[4, 4, 0, 0]}
+                fill="#6366F1"
               />
             </BarChart>
           </ResponsiveContainer>
         </div>
       </div>
 
-      {/* Recent Sentiments */}
+      {/* Gender-Based Analysis */}
+      <GenderSentimentVisualization
+        positiveTerms={data.gender_analysis.positive_terms}
+        negativeTerms={data.gender_analysis.negative_terms}
+        title="Gender-Based Sentiment Analysis"
+      />
+
+      {/* Word Clouds */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <WordCloudVisualization
+          words={data.top_words.positive}
+          title="Positive Terms Word Cloud"
+          colorScheme="positive"
+        />
+        <WordCloudVisualization
+          words={data.top_words.negative}
+          title="Negative Terms Word Cloud"
+          colorScheme="negative"
+        />
+      </div>
+
+      {/* Recent Comments */}
       <div className="bg-white p-6 rounded-lg shadow-md">
         <h2 className="text-xl font-semibold text-gray-900 mb-4">
           Recent Sentiment Analysis
         </h2>
         <div className="space-y-4">
-          {data?.recent_sentiments.map((sentiment, index) => (
+          {data.recent_sentiments.map((sentiment, index) => (
             <div 
               key={index}
               className={`p-4 rounded-lg ${
@@ -150,7 +167,7 @@ function ProfessorSentimentDashboard({ professorId }: Props) {
               }`}
             >
               <p className="text-gray-700">{sentiment.comment}</p>
-              <div className="mt-2 flex justify-between items-center text-sm">
+              <div className="mt-2 flex flex-wrap gap-4 text-sm">
                 <span className="text-gray-500">
                   {new Date(sentiment.created_at).toLocaleDateString()}
                 </span>
@@ -161,30 +178,14 @@ function ProfessorSentimentDashboard({ professorId }: Props) {
                     ? 'text-red-600' 
                     : 'text-gray-600'
                 }`}>
-                  Sentiment: {sentiment.sentiment}
+                  Overall: {sentiment.sentiment.toFixed(2)}
+                </span>
+                <span className="text-indigo-600">
+                  VADER: {sentiment.vader_compound.toFixed(2)}
                 </span>
               </div>
             </div>
           ))}
-        </div>
-      </div>
-
-      {/* Word Analysis */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Positive Words */}
-        <div className="bg-white p-6 rounded-lg shadow-md">
-          <h2 className="text-xl font-semibold text-gray-900 mb-4">
-            Top Positive Words
-          </h2>
-          <WordGrid words={data.top_words.positive} />
-        </div>
-
-        {/* Negative Words */}
-        <div className="bg-white p-6 rounded-lg shadow-md">
-          <h2 className="text-xl font-semibold text-gray-900 mb-4">
-            Top Negative Words
-          </h2>
-          <WordGrid words={data.top_words.negative} />
         </div>
       </div>
     </div>
