@@ -12,7 +12,7 @@ from .serializers import (
     DepartmentSerializer, ProfessorSerializer, RatingSerializer,
     SentimentSerializer, UserSerializer, UserRoleSerializer
 )
-from .utils import calculate_professor_metrics
+from .utils import calculate_professor_metrics, analyze_department_bias
 
 User = get_user_model()
 
@@ -90,12 +90,48 @@ class IsAdminUser(permissions.BasePermission):
 
 # Base viewsets without role checks for now
 class DepartmentViewSet(viewsets.ModelViewSet):
-    queryset = Department.objects.all()
+    queryset = Department.objects.all().order_by('name')
     serializer_class = DepartmentSerializer
     permission_classes = [permissions.IsAuthenticated]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['name', 'discipline', 'sub_discipline']
     ordering_fields = ['name', 'discipline']
+
+    @action(detail=False, methods=['get'])
+    def stats(self, request):
+        """Get statistics for all departments"""
+        departments = Department.objects.all()
+        stats = {}
+        
+        for dept in departments:
+            dept_stats = {
+                'professorCount': Professor.objects.filter(department=dept).count(),
+                'avgRating': Rating.objects.filter(
+                    professor__department=dept
+                ).aggregate(avg=Avg('avg_rating'))['avg'] or 0
+            }
+            stats[dept.id] = dept_stats
+            
+        return Response(stats)
+
+    @action(detail=False, methods=['get'], url_path='bias/gender')
+    def gender_bias(self, request):
+        departments = Department.objects.all()
+        results = []
+        
+        for dept in departments:
+            bias_data = analyze_department_bias(dept.id)
+            if bias_data['male_stats']['total_ratings'] > 0 and bias_data['female_stats']['total_ratings'] > 0:
+                results.append({
+                    'department_name': dept.name,
+                    'male_avg_rating': bias_data['male_stats']['avg_rating'],
+                    'female_avg_rating': bias_data['female_stats']['avg_rating'],
+                    'rating_difference': bias_data['male_stats']['avg_rating'] - bias_data['female_stats']['avg_rating'],
+                    'sample_size_male': bias_data['male_stats']['total_ratings'],
+                    'sample_size_female': bias_data['female_stats']['total_ratings']
+                })
+        
+        return Response(results)
 
 class ProfessorViewSet(viewsets.ModelViewSet):
     queryset = Professor.objects.all()
@@ -126,8 +162,8 @@ class RatingViewSet(viewsets.ModelViewSet):
     serializer_class = RatingSerializer
     permission_classes = [permissions.IsAuthenticated]
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
-    filterset_fields = ['professor', 'class_name', 'is_online', 'is_for_credit']
-    ordering_fields = ['created_at', 'avg_rating', 'helpful_rating', 'clarity_rating']
+    filterset_fields = ['professor', 'is_online', 'is_for_credit']
+    ordering_fields = ['created_at', 'avg_rating', 'helpful_rating', 'clarity_rating', 'difficulty_rating']
 
     @action(detail=False, methods=['get'])
     def stats(self, request):
@@ -197,3 +233,11 @@ class UserRoleViewSet(viewsets.ModelViewSet):
     queryset = UserRole.objects.all()
     serializer_class = UserRoleSerializer 
     permission_classes = [permissions.IsAdminUser]
+
+class TopicViewSet(viewsets.ViewSet):
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def list(self, request):
+        # Get unique topics from ratings and sentiments
+        topics = Rating.objects.values('comment_topic').distinct()
+        return Response({'topics': [t['comment_topic'] for t in topics if t['comment_topic']]})

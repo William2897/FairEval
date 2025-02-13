@@ -28,7 +28,7 @@ function Dashboard() {
   const { data: stats, isLoading, isError } = useQuery<DashboardStats>({
     queryKey: ['dashboard-stats'],
     queryFn: async () => {
-      if (user?.role?.role === 'professor') {
+      if (user?.role?.role === 'ACADEMIC') {
         const metrics = await axios.get(`/api/professors/${user.id}/metrics/`);
         const ratingStats = await axios.get(`/api/ratings/?professor=${user.id}&page_size=100`);
         
@@ -96,7 +96,21 @@ function Dashboard() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
+      <div className="flex justify-between items-center">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
+        </div>
+        {user && (
+          <div className="text-right">
+            <p className="text-lg font-medium text-gray-900">
+              {user.first_name} {user.last_name}
+            </p>
+            <p className="text-sm text-gray-500">
+              {user.role?.role === 'professor' ? 'Professor' : 'Administrator'}
+            </p>
+          </div>
+        )}
+      </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-white p-6 rounded-lg shadow">

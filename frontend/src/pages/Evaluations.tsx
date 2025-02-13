@@ -32,7 +32,8 @@ function Evaluations() {
     queryKey: ['ratings'],
     queryFn: async () => {
       const { data } = await axios.get('/api/ratings/');
-      return data;
+      // Ensure we return an array even if the API response is wrapped
+      return Array.isArray(data) ? data : data?.results || [];
     },
   });
 
@@ -65,7 +66,7 @@ function Evaluations() {
       </div>
 
       {/* Admin Section */}
-      {user?.role === 'academic_admin' && (
+      {user?.role.role === 'ADMIN' && (
         <>
           <DataUploadForm />
           

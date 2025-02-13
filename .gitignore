@@ -64,6 +64,7 @@ ENV/
 
 #Static files
 staticfiles/
+Static/
 
 # csv files
 *.csv

@@ -45,8 +45,9 @@ class Rating(models.Model):
     class Meta:
         indexes = [
             models.Index(fields=['professor', 'created_at']),
-            models.Index(fields=['avg_rating', 'helpful_rating', 'clarity_rating']),
+            models.Index(fields=['avg_rating', 'helpful_rating', 'clarity_rating', 'difficulty_rating']),
         ]
+        ordering = ['-created_at']  # Default ordering by newest first
 
     def __str__(self):
         return f"{self.professor} - {self.avg_rating} - {self.flag_status}"

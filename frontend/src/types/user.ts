@@ -1,5 +1,5 @@
 export interface UserRole {
-  role: 'professor' | 'academic_admin';
+  role: 'ADMIN' | 'ACADEMIC';
   discipline: string;
 }
 

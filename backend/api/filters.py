@@ -1,4 +1,5 @@
 from django_filters import rest_framework as filters
+from django.db.models import Avg
 from .models import Rating, Professor
 
 class RatingFilter(filters.FilterSet):
@@ -9,17 +10,17 @@ class RatingFilter(filters.FilterSet):
 
     class Meta:
         model = Rating
-        fields = ['professor', 'class_name', 'is_online', 'is_for_credit', 
+        fields = ['professor', 'is_online', 'is_for_credit', 
                  'start_date', 'end_date', 'min_rating', 'max_rating']
 
 class ProfessorFilter(filters.FilterSet):
     min_rating = filters.NumberFilter(method='filter_avg_rating')
     max_rating = filters.NumberFilter(method='filter_avg_rating')
-    department_name = filters.CharFilter(field_name='department__name', lookup_expr='icontains')
+    discipline_name = filters.CharFilter(field_name='discipline__name', lookup_expr='icontains')
 
     class Meta:
         model = Professor
-        fields = ['gender', 'department', 'department_name']
+        fields = ['gender', 'discipline', 'discipline_name']
 
     def filter_avg_rating(self, queryset, name, value):
         lookup = '__gte' if name == 'min_rating' else '__lte'

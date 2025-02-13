@@ -23,7 +23,8 @@ function Departments() {
     queryKey: ['departments'],
     queryFn: async () => {
       const { data } = await axios.get('/api/departments/');
-      return data;
+      // Ensure we return an array even if the API response is wrapped
+      return Array.isArray(data) ? data : data?.results || [];
     },
   });
 
