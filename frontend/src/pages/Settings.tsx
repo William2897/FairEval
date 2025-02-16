@@ -22,7 +22,7 @@ function Settings() {
           <div>
             <label className="block text-sm font-medium text-gray-700">Role</label>
             <div className="mt-1 text-gray-900">
-              {user?.role?.role === 'professor' ? 'Professor' : 'Administrator'}
+              {user?.role?.role === 'ACADEMIC' ? 'Professor' : 'Administrator'}
             </div>
           </div>
 

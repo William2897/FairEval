@@ -78,7 +78,7 @@ function Dashboard() {
               {user.first_name} {user.last_name}
             </p>
             <p className="text-sm text-gray-500">
-              {user.role?.role === 'professor' ? 'Professor' : 'Administrator'}
+              {user.role?.role === 'ACADEMIC' ? 'Professor' : 'Administrator'}
             </p>
           </div>
         )}
