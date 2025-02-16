@@ -25,11 +25,11 @@ api.interceptors.request.use((config) => {
 
 interface User {
   id: string;
-  username: string;
+  username: string;  // This is the professor_id for academic users
   email: string;
   first_name: string;
   last_name: string;
-  role: {
+  role?: {
     role: string;
     discipline: string;
   };

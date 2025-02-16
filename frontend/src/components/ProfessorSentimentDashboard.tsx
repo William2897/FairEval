@@ -68,126 +68,127 @@ function ProfessorSentimentDashboard({ professorId }: Props) {
   if (error || !data) {
     return (
       <div className="bg-red-50 text-red-600 p-4 rounded-lg">
-        Failed to load sentiment analysis data
+        Failed to load sentiment analysis data. Please try again later.
       </div>
     );
   }
 
+  // Ensure we have default values if any properties are undefined
   const sentimentData = [
-    { name: 'Positive', count: data.sentiment_counts.positive },
-    { name: 'Negative', count: data.sentiment_counts.negative },
+    { name: 'Positive', count: data.sentiment_counts?.positive || 0 },
+    { name: 'Negative', count: data.sentiment_counts?.negative || 0 },
   ];
 
   const vaderData = [
-    { name: 'Compound', score: data.vader_scores.compound },
-    { name: 'Positive', score: data.vader_scores.positive },
-    { name: 'Negative', score: data.vader_scores.negative },
+    { name: 'Compound', score: data.vader_scores?.compound || 0 },
+    { name: 'Positive', score: data.vader_scores?.positive || 0 },
+    { name: 'Negative', score: data.vader_scores?.negative || 0 },
   ];
 
   return (
     <div className="space-y-8">
-      {/* Sentiment Distribution */}
-      <div className="bg-white p-6 rounded-lg shadow-md">
-        <h2 className="text-xl font-semibold text-gray-900 mb-4">
-          Comment Sentiment Distribution
-        </h2>
-        <div className="h-64">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={sentimentData}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="name" />
-              <YAxis />
-              <Tooltip />
-              <Bar
-                dataKey="count"
-                fill="#6366F1"
-              />
-            </BarChart>
-          </ResponsiveContainer>
+      {/* Only render sections if we have the required data */}
+      {data.sentiment_counts && (
+        <div className="bg-white p-6 rounded-lg shadow-md">
+          <h2 className="text-xl font-semibold text-gray-900 mb-4">
+            Comment Sentiment Distribution
+          </h2>
+          <div className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={sentimentData}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="name" />
+                <YAxis />
+                <Tooltip />
+                <Bar dataKey="count" fill="#6366F1" />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* VADER Scores */}
-      <div className="bg-white p-6 rounded-lg shadow-md">
-        <h2 className="text-xl font-semibold text-gray-900 mb-4">
-          VADER Sentiment Scores
-        </h2>
-        <div className="h-64">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={vaderData}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="name" />
-              <YAxis domain={[-1, 1]} />
-              <Tooltip />
-              <Bar
-                dataKey="score"
-                fill="#6366F1"
-              />
-            </BarChart>
-          </ResponsiveContainer>
+      {data.vader_scores && (
+        <div className="bg-white p-6 rounded-lg shadow-md">
+          <h2 className="text-xl font-semibold text-gray-900 mb-4">
+            VADER Sentiment Scores
+          </h2>
+          <div className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={vaderData}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="name" />
+                <YAxis domain={[-1, 1]} />
+                <Tooltip />
+                <Bar dataKey="score" fill="#6366F1" />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* Gender-Based Analysis */}
-      <GenderSentimentVisualization
-        positiveTerms={data.gender_analysis.positive_terms}
-        negativeTerms={data.gender_analysis.negative_terms}
-        title="Gender-Based Sentiment Analysis"
-      />
-
-      {/* Word Clouds */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <WordCloudVisualization
-          words={data.top_words.positive}
-          title="Positive Terms Word Cloud"
-          colorScheme="positive"
+      {data.gender_analysis && (
+        <GenderSentimentVisualization
+          positiveTerms={data.gender_analysis.positive_terms || []}
+          negativeTerms={data.gender_analysis.negative_terms || []}
+          title="Gender-Based Sentiment Analysis"
         />
-        <WordCloudVisualization
-          words={data.top_words.negative}
-          title="Negative Terms Word Cloud"
-          colorScheme="negative"
-        />
-      </div>
+      )}
 
-      {/* Recent Comments */}
-      <div className="bg-white p-6 rounded-lg shadow-md">
-        <h2 className="text-xl font-semibold text-gray-900 mb-4">
-          Recent Sentiment Analysis
-        </h2>
-        <div className="space-y-4">
-          {data.recent_sentiments.map((sentiment, index) => (
-            <div 
-              key={index}
-              className={`p-4 rounded-lg ${
-                sentiment.sentiment > 0 
-                  ? 'bg-green-50' 
-                  : sentiment.sentiment < 0 
-                  ? 'bg-red-50' 
-                  : 'bg-gray-50'
-              }`}
-            >
-              <p className="text-gray-700">{sentiment.comment}</p>
-              <div className="mt-2 flex flex-wrap gap-4 text-sm">
-                <span className="text-gray-500">
-                  {new Date(sentiment.created_at).toLocaleDateString()}
-                </span>
-                <span className={`font-medium ${
-                  sentiment.sentiment > 0 
-                    ? 'text-green-600' 
-                    : sentiment.sentiment < 0 
-                    ? 'text-red-600' 
-                    : 'text-gray-600'
-                }`}>
-                  Overall: {sentiment.sentiment.toFixed(2)}
-                </span>
-                <span className="text-indigo-600">
-                  VADER: {sentiment.vader_compound.toFixed(2)}
-                </span>
+      {data.top_words && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <WordCloudVisualization
+            words={data.top_words.positive || []}
+            title="Positive Terms Word Cloud"
+            colorScheme="positive"
+          />
+          <WordCloudVisualization
+            words={data.top_words.negative || []}
+            title="Negative Terms Word Cloud"
+            colorScheme="negative"
+          />
+        </div>
+      )}
+
+      {data.recent_sentiments && data.recent_sentiments.length > 0 && (
+        <div className="bg-white p-6 rounded-lg shadow-md">
+          <h2 className="text-xl font-semibold text-gray-900 mb-4">
+            Recent Sentiment Analysis
+          </h2>
+          <div className="space-y-4">
+            {data.recent_sentiments.map((sentiment, index) => (
+              <div 
+                key={index}
+                className={`p-4 rounded-lg ${
+                  sentiment.sentiment === 1
+                    ? 'bg-green-50' 
+                    : sentiment.sentiment === 0
+                    ? 'bg-red-50' 
+                    : 'bg-gray-50'
+                }`}
+              >
+                <p className="text-gray-700">{sentiment.comment}</p>
+                <div className="mt-2 flex flex-wrap gap-4 text-sm">
+                  <span className="text-gray-500">
+                    {new Date(sentiment.created_at).toLocaleDateString()}
+                  </span>
+                  <span className={`font-medium ${
+                    sentiment.sentiment === 1
+                      ? 'text-green-600' 
+                      : sentiment.sentiment === 0
+                      ? 'text-red-600' 
+                      : 'text-gray-600'
+                  }`}>
+                    Overall: {sentiment.sentiment === 1 ? 'Positive' : 'Negative'}
+                  </span>
+                  <span className="text-indigo-600">
+                    VADER: {(sentiment.vader_compound || 0).toFixed(2)}
+                  </span>
+                </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

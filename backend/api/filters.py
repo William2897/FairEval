@@ -7,6 +7,7 @@ class RatingFilter(filters.FilterSet):
     end_date = filters.DateTimeFilter(field_name='created_at', lookup_expr='lte')
     min_rating = filters.NumberFilter(field_name='avg_rating', lookup_expr='gte')
     max_rating = filters.NumberFilter(field_name='avg_rating', lookup_expr='lte')
+    professor = filters.NumberFilter(field_name='professor__id')
 
     class Meta:
         model = Rating

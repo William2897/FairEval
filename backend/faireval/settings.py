@@ -65,7 +65,7 @@ WSGI_APPLICATION = 'faireval.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': os.getenv('DB_NAME', 'fair_eval_sys_db'),
+        'NAME': os.getenv('DB_NAME', 'faireval_db'),
         'USER': os.getenv('DB_USER', 'postgres'),
         'PASSWORD': os.getenv('DB_PASSWORD', 'password'),
         'HOST': os.getenv('DB_HOST', 'localhost'),  # Default to localhost for local development

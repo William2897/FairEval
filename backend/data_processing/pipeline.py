@@ -91,7 +91,7 @@ def run_db_population(processed_csv_path, db_config):
                     WHEN ROW_NUMBER() OVER (ORDER BY RANDOM()) <= %s THEN 'ADMIN'
                     ELSE 'ACADEMIC'
                 END,
-                p.discipline  -- Get discipline directly from professor table
+                p.discipline
             FROM auth_user u
             JOIN api_professor p ON p.professor_id = u.username
             LEFT JOIN api_userrole ur ON ur.user_id = u.id
@@ -100,7 +100,7 @@ def run_db_population(processed_csv_path, db_config):
         cursor.execute(insert_roles_sql, (admin_count,))
         conn.commit()
 
-        # 3. Insert ratings
+        # 3. Insert ratings - FIXED to use professor_id directly
         batch_size = 5000
         insert_ratings_sql = """
             INSERT INTO api_rating (
@@ -109,7 +109,7 @@ def run_db_population(processed_csv_path, db_config):
                 is_for_credit, created_at
             )
             SELECT 
-                p.id,
+                r.prof_id,
                 r.avg_rating,
                 r.flag_status,
                 r.helpful_rating,
@@ -135,10 +135,10 @@ def run_db_population(processed_csv_path, db_config):
                     is_for_credit, created_at
                 )
             ) r
-            JOIN api_professor p ON p.professor_id = r.prof_id
+            WHERE EXISTS (SELECT 1 FROM api_professor p WHERE p.professor_id = r.prof_id)
         """
 
-        # 4. Insert sentiments
+        # 4. Insert sentiments - FIXED to use professor_id directly
         insert_sentiment_sql = """
             INSERT INTO api_sentiment (
                 professor_id, comment, processed_comment,
@@ -148,10 +148,10 @@ def run_db_population(processed_csv_path, db_config):
                 vader_negative, vader_neutral
             )
             SELECT 
-                p.id,
+                s.prof_id,
                 s.comment,
                 s.proc_comment,
-                NULL,  -- sentiment will be computed later
+                s.sentiment, 
                 s.created_at,
                 NULL, NULL,  -- positive/negative terms
                 NULL, NULL, NULL, NULL  -- VADER scores
@@ -160,12 +160,13 @@ def run_db_population(processed_csv_path, db_config):
                     %s::text[],       -- professor_id
                     %s::text[],       -- comment
                     %s::text[],       -- processed_comment
+                    %s::float[],      -- sentiment
                     %s::timestamp[]   -- created_at
                 ) AS s(
-                    prof_id, comment, proc_comment, created_at
+                    prof_id, comment, proc_comment, sentiment, created_at
                 )
             ) s
-            JOIN api_professor p ON p.professor_id = s.prof_id
+            WHERE EXISTS (SELECT 1 FROM api_professor p WHERE p.professor_id = s.prof_id)
         """
         
         current_time = datetime.now()
@@ -194,6 +195,7 @@ def run_db_population(processed_csv_path, db_config):
                 prof_ids,
                 chunk['rating_comment'].tolist(),
                 chunk['processed_comment'].tolist(),
+                chunk['sentiment'].tolist(),
                 timestamps
             ))
             

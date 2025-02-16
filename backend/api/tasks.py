@@ -29,6 +29,7 @@ def process_rating_upload(ratings_data):
 def analyze_comments_sentiment(professor_id):
     """Analyze sentiment for a professor's ratings comments"""
     from data_processing.text_preprocessing import get_vader_sentiment, extract_opinion_terms
+    professor = Professor.objects.get(professor_id=professor_id)
     
     ratings = Rating.objects.filter(
         professor_id=professor_id,

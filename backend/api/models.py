@@ -1,13 +1,12 @@
 from django.db import models
 from django.contrib.auth.models import User
-from django.core.validators import MinValueValidator, MaxValueValidator
 
 class Professor(models.Model):
-    professor_id = models.CharField(max_length=50, unique=True, default='PID000000')
+    professor_id = models.CharField(max_length=50, unique=True)
     first_name = models.CharField(max_length=100)
     last_name = models.CharField(max_length=100)
-    gender = models.CharField(max_length=10, null=True)  # Increased length to handle existing data
-    discipline = models.CharField(max_length=100, db_index=True, default='Interdisciplinary Studies')
+    gender = models.CharField(max_length=10, null=True)
+    discipline = models.CharField(max_length=100, db_index=True)
     sub_discipline = models.CharField(max_length=100, null=True, db_index=True)
     
     class Meta:
@@ -21,7 +20,13 @@ class Professor(models.Model):
         return f"{self.first_name} {self.last_name} ({self.discipline})"
 
 class Rating(models.Model):
-    professor = models.ForeignKey(Professor, on_delete=models.CASCADE, related_name='ratings')
+    professor = models.ForeignKey(
+        Professor, 
+        to_field='professor_id',  # Reference the business key
+        db_column='professor_id', # Use consistent column name  
+        on_delete=models.CASCADE, 
+        related_name='ratings'
+    )
     avg_rating = models.FloatField(default=0.0, db_index=True)
     flag_status = models.CharField(max_length=50, null=True, db_index=True)
     helpful_rating = models.FloatField(null=True, db_index=True)
@@ -42,13 +47,21 @@ class Rating(models.Model):
         return f"{self.professor} - {self.avg_rating} - {self.flag_status}"
 
 class Sentiment(models.Model):
-    professor = models.ForeignKey(User, on_delete=models.CASCADE, related_name='sentiment')
+    professor = models.ForeignKey(
+        Professor,
+        to_field='professor_id',  # Reference the business key
+        db_column='professor_id', # Use consistent column name
+        on_delete=models.CASCADE,
+        related_name='sentiments'
+    )
     comment = models.TextField(null=True)
     processed_comment = models.TextField(null=True)
     sentiment = models.FloatField(null=True, db_index=True)
+    confidence = models.FloatField(null=True)
+    comment_topic = models.CharField(max_length=100, null=True, db_index=True)
     vader_compound = models.FloatField(null=True)
     vader_positive = models.FloatField(null=True)
-    vader_negative = models.FloatField(null=True)
+    vader_negative = models.FloatField(null=True)  
     vader_neutral = models.FloatField(null=True)
     positive_terms = models.JSONField(null=True)
     negative_terms = models.JSONField(null=True)
