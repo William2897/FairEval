@@ -1,7 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
-import ProfessorSentimentDashboard from '../components/ProfessorSentimentDashboard';
-import { CommentSummaryDisplay } from '../components/CommentSummaryDisplay';
 import { TopicModelVisualization } from '../components/TopicModelVisualization';
 import { RecommendationDisplay } from '../components/RecommendationDisplay';
 import { DisciplineAnalysisDashboard } from '../components/DisciplineAnalysisDashboard';
@@ -51,7 +49,6 @@ function Dashboard() {
     );
   }
 
-  // Show skeleton loading state instead of spinner
   if (isLoading) {
     return (
       <div className="space-y-6 animate-pulse">
@@ -98,9 +95,9 @@ function Dashboard() {
               <p className="text-3xl font-bold text-indigo-600 mt-2">
                 {stats.metrics.avg_rating.toFixed(2)}
               </p>
-                <p className={`text-sm ${stats.metrics.trend > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                  {stats.metrics.trend > 0 ? '↑' : '↓'} {Math.abs(stats.metrics.trend).toFixed(2)} vs last month
-                </p>
+              <p className={`text-sm ${stats.metrics.trend > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                {stats.metrics.trend > 0 ? '↑' : '↓'} {Math.abs(stats.metrics.trend).toFixed(2)} vs last month
+              </p>
             </div>
             <div className="bg-white p-6 rounded-lg shadow">
               <h3 className="text-lg font-medium text-gray-900">Clarity Score</h3>
@@ -124,19 +121,9 @@ function Dashboard() {
         <DisciplineAnalysisDashboard />
       </div>
 
-      {/* Show sentiment dashboard only for professors */}
+      {/* Show topic analysis and recommendations for professors */}
       {user?.role?.role === 'ACADEMIC' && (
         <>
-          <div>
-            <h2 className="text-xl font-bold text-gray-900 mb-4">Sentiment Analysis</h2>
-            <ProfessorSentimentDashboard professorId={user.username} />
-          </div>
-          
-          <div>
-            <h2 className="text-xl font-bold text-gray-900 mb-4">Comment Summaries</h2>
-            <CommentSummaryDisplay professorId={user.username} />
-          </div>
-
           <div>
             <h2 className="text-xl font-bold text-gray-900 mb-4">Topic Analysis</h2>
             <TopicModelVisualization professorId={user.username} />

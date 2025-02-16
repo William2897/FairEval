@@ -4,11 +4,11 @@ import { useAuth } from '../contexts/AuthContext';
 import { 
   LayoutDashboard, 
   FileText, 
-  GraduationCap, 
-  Building2,
   Menu,
   X,
-  LogOut
+  LogOut,
+  BarChart,
+  Settings,
 } from 'lucide-react';
 
 interface NavItemProps {
@@ -42,8 +42,8 @@ function Layout({ children }: { children: React.ReactNode }) {
   const navItems = [
     { to: '/', icon: <LayoutDashboard size={20} />, label: 'Dashboard' },
     { to: '/evaluations', icon: <FileText size={20} />, label: 'Evaluations' },
-    { to: '/courses', icon: <GraduationCap size={20} />, label: 'Courses' },
-    { to: '/departments', icon: <Building2 size={20} />, label: 'Departments' },
+    { to: '/sentiment', icon: <BarChart size={20} />, label: 'Sentiment Analysis' },
+    { to: '/settings', icon: <Settings size={20} />, label: 'Settings' }
   ];
 
   return (

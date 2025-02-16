@@ -1,6 +1,7 @@
 from django.utils import timezone
 from datetime import timedelta
 from rest_framework import viewsets, permissions, filters, status
+from rest_framework import pagination  # added import for pagination
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
@@ -360,10 +361,17 @@ class RatingViewSet(viewsets.ModelViewSet):
     queryset = Rating.objects.all()
     serializer_class = RatingSerializer
     permission_classes = [permissions.IsAuthenticated]
-    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_class = RatingFilter
+    search_fields = ['professor__first_name', 'professor__last_name', 'professor__discipline', 'professor__sub_discipline']
     ordering_fields = ['created_at', 'avg_rating', 'helpful_rating', 'clarity_rating', 'difficulty_rating']
+    pagination_class = pagination.PageNumberPagination
+    page_size = 50
 
+    def get_queryset(self):
+        queryset = Rating.objects.select_related('professor').all()
+        return queryset
+    
     @action(detail=False, methods=['get'])
     def stats(self, request):
         """Get institution-wide rating statistics"""

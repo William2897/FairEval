@@ -6,6 +6,7 @@ import Evaluations from '../pages/Evaluations';
 import Settings from '../pages/Settings';
 import Layout from '../components/Layout';
 import NotFound from '../pages/NotFound';
+import SentimentAnalysis from '../pages/SentimentAnalysis';
 import { useAuth } from '../contexts/AuthContext';
 
 interface PrivateRouteProps {
@@ -35,6 +36,10 @@ const router = createBrowserRouter([
       {
         path: 'evaluations',
         element: <Evaluations />,
+      },
+      {
+        path: 'sentiment',
+        element: <SentimentAnalysis />,
       },
       {
         path: 'settings',

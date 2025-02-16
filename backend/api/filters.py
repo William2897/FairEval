@@ -1,5 +1,5 @@
 from django_filters import rest_framework as filters
-from django.db.models import Avg
+from django.db.models import Avg, Q
 from .models import Rating, Professor
 
 class RatingFilter(filters.FilterSet):
@@ -8,6 +8,15 @@ class RatingFilter(filters.FilterSet):
     min_rating = filters.NumberFilter(field_name='avg_rating', lookup_expr='gte')
     max_rating = filters.NumberFilter(field_name='avg_rating', lookup_expr='lte')
     professor = filters.NumberFilter(field_name='professor__id')
+    search = filters.CharFilter(method='filter_search')
+
+    def filter_search(self, queryset, name, value):
+        return queryset.filter(
+            Q(professor__first_name__icontains=value) |
+            Q(professor__last_name__icontains=value) |
+            Q(professor__discipline__icontains=value) |
+            Q(professor__sub_discipline__icontains=value)
+        )
 
     class Meta:
         model = Rating

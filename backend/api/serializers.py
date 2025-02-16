@@ -40,11 +40,18 @@ class ProfessorSerializer(serializers.ModelSerializer):
                  'avg_helpful', 'avg_clarity', 'avg_difficulty']
 
 class RatingSerializer(serializers.ModelSerializer):
-    professor_name = serializers.CharField(source='professor.first_name', read_only=True)
+    professor_name = serializers.SerializerMethodField()
+    discipline = serializers.CharField(source='professor.discipline', read_only=True)
+    sub_discipline = serializers.CharField(source='professor.sub_discipline', read_only=True)
+
+    def get_professor_name(self, obj):
+        return f"{obj.professor.first_name} {obj.professor.last_name}"
 
     class Meta:
         model = Rating
-        fields = '__all__'
+        fields = ['id', 'professor', 'professor_name', 'discipline', 'sub_discipline', 
+                 'avg_rating', 'flag_status', 'helpful_rating', 'clarity_rating', 
+                 'difficulty_rating', 'is_online', 'is_for_credit', 'created_at']
 
 class SentimentSerializer(serializers.ModelSerializer):
     class Meta:
