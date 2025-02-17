@@ -3,7 +3,7 @@ services:
     build: ./backend
     command: >
       sh -c "python manage.py collectstatic --noinput &&
-             gunicorn faireval.wsgi:application --bind 0.0.0.0:8000 --timeout 120"
+             daphne -b 0.0.0.0 -p 8000 faireval.asgi:application"
     volumes:
       - ./backend:/app
       - frontend_build:/app/frontend/dist
@@ -18,13 +18,13 @@ services:
       - DB_USER=postgres
       - DB_PASSWORD=password
       - DB_PORT=5432
-      - ALLOWED_HOSTS=localhost,127.0.0.1, backend
+      - ALLOWED_HOSTS=localhost,127.0.0.1,backend
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - CHANNEL_LAYERS=redis://redis:6379/1
     depends_on:
       - postgres
       - redis
-      - frontend
 
   celery_worker:
     build: ./backend
@@ -40,6 +40,7 @@ services:
       - DB_PASSWORD=password
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - CHANNEL_LAYERS=redis://redis:6379/1
     depends_on:
       - postgres
       - redis
@@ -67,11 +68,12 @@ services:
     volumes:
       - ./frontend:/app
       - /app/node_modules
-      - frontend_build:/app/dist
-    environment:
-      - VITE_APP_API_URL=http://localhost:8000
     ports:
       - "5173:5173"
+    environment:
+      - VITE_API_URL=http://localhost:8000
+    depends_on:
+      - backend
 
 volumes:
   postgres_data:

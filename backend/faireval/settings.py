@@ -26,6 +26,8 @@ INSTALLED_APPS = [
     'corsheaders',
     'django_filters',
     'drf_spectacular',
+    'channels',  # Add Django Channels
+    'channels_redis',  # Add Channels Redis
     # Local apps
     'api.apps.ApiConfig',
 ]
@@ -210,3 +212,15 @@ CELERY_BEAT_SCHEDULE = {
         'schedule': crontab(minute='0', hour='*/4'),  # Run every 4 hours
     },
 }
+
+# Django Channels Configuration
+CHANNEL_LAYERS = {
+    'default': {
+        'BACKEND': 'channels_redis.core.RedisChannelLayer',
+        'CONFIG': {
+            'hosts': [(os.getenv('CHANNEL_LAYERS', 'redis://localhost:6379/1'))],
+        },
+    },
+}
+
+ASGI_APPLICATION = 'faireval.asgi.application'

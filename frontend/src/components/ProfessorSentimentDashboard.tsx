@@ -1,36 +1,12 @@
 import { useQuery } from '@tanstack/react-query';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { Loader2 } from 'lucide-react';
-import { WordCloudVisualization } from './WordCloudVisualization';
-import { GenderSentimentVisualization } from './GenderSentimentVisualization';
+import { useProfessorUpdates } from '../hooks/useProfessorUpdates';
 
 interface SentimentData {
   sentiment_counts: {
     positive: number;
     negative: number;
-  };
-  vader_scores: {
-    compound: number;
-    positive: number;
-    negative: number;
-  };
-  top_words: {
-    positive: Array<{ word: string; count: number }>;
-    negative: Array<{ word: string; count: number }>;
-  };
-  gender_analysis: {
-    positive_terms: Array<{
-      term: string;
-      male_freq: number;
-      female_freq: number;
-      bias: 'Male' | 'Female';
-    }>;
-    negative_terms: Array<{
-      term: string;
-      male_freq: number;
-      female_freq: number;
-      bias: 'Male' | 'Female';
-    }>;
   };
   recent_sentiments: Array<{
     comment: string;
@@ -46,6 +22,9 @@ interface Props {
 }
 
 function ProfessorSentimentDashboard({ professorId }: Props) {
+  // Enable real-time updates
+  useProfessorUpdates(professorId);
+
   const { data, isLoading, error } = useQuery<SentimentData>({
     queryKey: ['professor-sentiment', professorId],
     queryFn: async () => {
@@ -79,12 +58,6 @@ function ProfessorSentimentDashboard({ professorId }: Props) {
     { name: 'Negative', count: data.sentiment_counts?.negative || 0 },
   ];
 
-  const vaderData = [
-    { name: 'Compound', score: data.vader_scores?.compound || 0 },
-    { name: 'Positive', score: data.vader_scores?.positive || 0 },
-    { name: 'Negative', score: data.vader_scores?.negative || 0 },
-  ];
-
   return (
     <div className="space-y-8">
       {/* Only render sections if we have the required data */}
@@ -104,48 +77,6 @@ function ProfessorSentimentDashboard({ professorId }: Props) {
               </BarChart>
             </ResponsiveContainer>
           </div>
-        </div>
-      )}
-
-      {data.vader_scores && (
-        <div className="bg-white p-6 rounded-lg shadow-md">
-          <h2 className="text-xl font-semibold text-gray-900 mb-4">
-            VADER Sentiment Scores
-          </h2>
-          <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={vaderData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="name" />
-                <YAxis domain={[-1, 1]} />
-                <Tooltip />
-                <Bar dataKey="score" fill="#6366F1" />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-      )}
-
-      {data.gender_analysis && (
-        <GenderSentimentVisualization
-          positiveTerms={data.gender_analysis.positive_terms || []}
-          negativeTerms={data.gender_analysis.negative_terms || []}
-          title="Gender-Based Sentiment Analysis"
-        />
-      )}
-
-      {data.top_words && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <WordCloudVisualization
-            words={data.top_words.positive || []}
-            title="Positive Terms Word Cloud"
-            colorScheme="positive"
-          />
-          <WordCloudVisualization
-            words={data.top_words.negative || []}
-            title="Negative Terms Word Cloud"
-            colorScheme="negative"
-          />
         </div>
       )}
 
@@ -179,9 +110,6 @@ function ProfessorSentimentDashboard({ professorId }: Props) {
                       : 'text-gray-600'
                   }`}>
                     Overall: {sentiment.sentiment === 1 ? 'Positive' : 'Negative'}
-                  </span>
-                  <span className="text-indigo-600">
-                    VADER: {(sentiment.vader_compound || 0).toFixed(2)}
                   </span>
                 </div>
               </div>

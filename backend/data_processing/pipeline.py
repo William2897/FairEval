@@ -2,12 +2,29 @@
 
 import psycopg2
 import pandas as pd
+import numpy as np
 from datetime import datetime
+import json  # Add this import at the top
 from data_processing.ingestion import ingest_csv_to_df
 from data_processing.cleaning import clean_data
 from data_processing.gender_assignment import engineer_gender
 from data_processing.dept_mapping import map_departments
 from data_processing.text_preprocessing import preprocess_comments
+import gc
+
+def validate_sentiment_data(df):
+    """Validate and clean sentiment values to ensure they are 0 or 1 integers"""
+    # Convert sentiment to integer, invalid values become NaN
+    df['sentiment'] = pd.to_numeric(df['sentiment'], errors='coerce').astype('Int64')
+    
+    # Only allow 0 or 1 values
+    valid_mask = df['sentiment'].isin([0, 1])
+    if not valid_mask.all():
+        invalid_count = (~valid_mask).sum()
+        print(f"Warning: Found {invalid_count} invalid sentiment values. Setting them to NaN.")
+        df.loc[~valid_mask, 'sentiment'] = pd.NA
+    
+    return df
 
 def run_full_pipeline(csv_path, db_config):
     """Optimized pipeline with batch processing"""
@@ -18,19 +35,27 @@ def run_full_pipeline(csv_path, db_config):
     df = clean_data(df)
     df = engineer_gender(df)
     df = map_departments(df)  # This now returns discipline and sub_discipline
-    df = preprocess_comments(df)
     
-    # Save processed data after Stage 2
+    # Process comments and save data before term frequency calculation
+    print("\nProcessing comments...")
+    processed_data = preprocess_comments(df)
+    df = processed_data[0]  # Get the processed dataframe
+    
+    # Save processed data
     processed_csv_path = csv_path.replace('.csv', '_processed.csv')
     df.to_csv(processed_csv_path, index=False)
     print(f"\nProcessed data saved to: {processed_csv_path}")
-
+    
+    # Proceed directly to database population
     run_db_population(processed_csv_path, db_config)
 
 def run_db_population(processed_csv_path, db_config):
     """Run only the database population stage using processed CSV"""
     print("\n--- Loading processed data ---")
     df = pd.read_csv(processed_csv_path)
+    
+    # Validate sentiment data before insertion
+    df = validate_sentiment_data(df)
     
     print("\n--- Stage 3: Database Population ---")
     conn = psycopg2.connect(**db_config)
@@ -138,68 +163,84 @@ def run_db_population(processed_csv_path, db_config):
             WHERE EXISTS (SELECT 1 FROM api_professor p WHERE p.professor_id = r.prof_id)
         """
 
-        # 4. Insert sentiments - FIXED to use professor_id directly
+        # Modify the sentiment insertion SQL to properly handle JSON arrays
         insert_sentiment_sql = """
             INSERT INTO api_sentiment (
                 professor_id, comment, processed_comment,
-                sentiment, created_at, 
-                positive_terms, negative_terms,
-                vader_compound, vader_positive,
-                vader_negative, vader_neutral
+                sentiment, positive_terms_lexicon, negative_terms_lexicon,
+                positive_terms_vader, negative_terms_vader,
+                created_at
             )
-            SELECT 
-                s.prof_id,
-                s.comment,
-                s.proc_comment,
-                s.sentiment, 
-                s.created_at,
-                NULL, NULL,  -- positive/negative terms
-                NULL, NULL, NULL, NULL  -- VADER scores
-            FROM (
-                SELECT * FROM unnest(
-                    %s::text[],       -- professor_id
-                    %s::text[],       -- comment
-                    %s::text[],       -- processed_comment
-                    %s::float[],      -- sentiment
-                    %s::timestamp[]   -- created_at
-                ) AS s(
-                    prof_id, comment, proc_comment, sentiment, created_at
-                )
-            ) s
-            WHERE EXISTS (SELECT 1 FROM api_professor p WHERE p.professor_id = s.prof_id)
+            VALUES (%s, %s, %s, %s, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s)
         """
         
         current_time = datetime.now()
         rating_chunks = [df[i:i + batch_size] for i in range(0, len(df), batch_size)]
+        
+        successful_inserts = 0
+        failed_inserts = 0
+        
         for chunk in rating_chunks:
-            # Prepare data arrays for ratings
-            prof_ids = chunk['professor_id'].tolist()
-            avg_ratings = chunk['avg_rating'].tolist()
-            flag_statuses = chunk['flag_status'].tolist()
-            helpful_ratings = chunk['helpful_rating'].tolist()
-            clarity_ratings = chunk['clarity_rating'].tolist()
-            difficulty_ratings = chunk['difficulty_rating'].tolist()
-            is_onlines = chunk['is_online'].tolist()
-            is_for_credits = chunk['is_for_credit'].tolist()
-            timestamps = [current_time] * len(chunk)
-            
-            # Execute ratings insertion
-            cursor.execute(insert_ratings_sql, (
-                prof_ids, avg_ratings, flag_statuses, helpful_ratings,
-                clarity_ratings, difficulty_ratings, is_onlines,
-                is_for_credits, timestamps
-            ))
+            try:
+                # Prepare data arrays for ratings
+                prof_ids = chunk['professor_id'].tolist()
+                avg_ratings = chunk['avg_rating'].tolist()
+                flag_statuses = chunk['flag_status'].tolist()
+                helpful_ratings = chunk['helpful_rating'].tolist()
+                clarity_ratings = chunk['clarity_rating'].tolist()
+                difficulty_ratings = chunk['difficulty_rating'].tolist()
+                is_onlines = chunk['is_online'].tolist()
+                is_for_credits = chunk['is_for_credit'].tolist()
+                timestamps = [current_time] * len(chunk)
+                
+                # Execute ratings insertion
+                cursor.execute(insert_ratings_sql, (
+                    prof_ids, avg_ratings, flag_statuses, helpful_ratings,
+                    clarity_ratings, difficulty_ratings, is_onlines,
+                    is_for_credits, timestamps
+                ))
 
-            # Execute sentiment insertion
-            cursor.execute(insert_sentiment_sql, (
-                prof_ids,
-                chunk['rating_comment'].tolist(),
-                chunk['processed_comment'].tolist(),
-                chunk['sentiment'].tolist(),
-                timestamps
-            ))
+                # Convert list columns to proper JSON strings
+                def convert_list_to_json(x):
+                    try:
+                        if isinstance(x, str):
+                            # Handle string representation of lists
+                            x = eval(x) if x else []
+                        return json.dumps(list(x)) if x else '[]'
+                    except:
+                        return '[]'
+
+                sentiment_data = [
+                    (
+                        row['professor_id'],
+                        row['rating_comment'],
+                        row['processed_comment'],
+                        row['sentiment'],
+                        convert_list_to_json(row['positive_terms_lexicon']),
+                        convert_list_to_json(row['negative_terms_lexicon']),
+                        convert_list_to_json(row['positive_terms_vader']),
+                        convert_list_to_json(row['negative_terms_vader']),
+                        current_time
+                    )
+                    for _, row in chunk.iterrows()
+                ]
+
+                # Execute sentiment insertion
+                cursor.executemany(insert_sentiment_sql, sentiment_data)
+                conn.commit()
+                successful_inserts += len(chunk)
+                
+            except Exception as e:
+                conn.rollback()
+                failed_inserts += len(chunk)
+                print(f"Error processing chunk: {str(e)}")
+                continue
             
-            conn.commit()
+            gc.collect()
+
+        print(f"\nInsertion complete:")
+        print(f"Successful inserts: {successful_inserts}")
+        print(f"Failed inserts: {failed_inserts}")
 
     except Exception as e:
         conn.rollback()

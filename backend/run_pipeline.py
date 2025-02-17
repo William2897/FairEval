@@ -20,7 +20,6 @@ db_config = {
     'port': settings.DATABASES['default']['PORT']
 }
 
-# # Remove extra quotes from the CSV path
 # csv_file = "professors_75346.csv"
 
 # if __name__ == "__main__":

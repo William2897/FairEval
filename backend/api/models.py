@@ -56,15 +56,13 @@ class Sentiment(models.Model):
     )
     comment = models.TextField(null=True)
     processed_comment = models.TextField(null=True)
-    sentiment = models.FloatField(null=True, db_index=True)
+    sentiment = models.IntegerField(null=True, db_index=True)  # Changed to IntegerField
     confidence = models.FloatField(null=True)
     comment_topic = models.CharField(max_length=100, null=True, db_index=True)
-    vader_compound = models.FloatField(null=True)
-    vader_positive = models.FloatField(null=True)
-    vader_negative = models.FloatField(null=True)  
-    vader_neutral = models.FloatField(null=True)
-    positive_terms = models.JSONField(null=True)
-    negative_terms = models.JSONField(null=True)
+    positive_terms_lexicon = models.JSONField(null=True)
+    negative_terms_lexicon = models.JSONField(null=True)
+    positive_terms_vader = models.JSONField(null=True)
+    negative_terms_vader = models.JSONField(null=True)
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
 
     class Meta:
@@ -80,7 +78,7 @@ class UserRole(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='role')
     role = models.CharField(
         max_length=10,
-        choices=[('ADMIN', 'Administrator'), ('ACADEMIC', 'Academic Staff')],
+        choices=[('ADMIN', 'Administrator'), ('ACADEMIC', 'Professor')],
         default='ACADEMIC'
     )
     discipline = models.CharField(  # Changed from department ForeignKey

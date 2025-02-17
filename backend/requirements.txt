@@ -7,6 +7,11 @@ gunicorn==21.2.0
 python-dotenv==1.0.1
 whitenoise==6.6.0
 
+# Websockets and Async
+channels==4.2.0
+channels-redis==4.2.1
+daphne==4.1.2
+
 # Async task processing
 celery==5.4.0
 redis==5.0.1

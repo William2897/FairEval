@@ -1,4 +1,4 @@
-from django.db.models import Avg, Count, Sum, F
+from django.db.models import Avg, Count, F
 from django.utils import timezone
 from datetime import timedelta
 from .models import Rating, Sentiment, Professor
@@ -7,7 +7,6 @@ from itertools import chain
 from scipy import stats
 from statsmodels.stats.multicomp import pairwise_tukeyhsd
 import pandas as pd
-import numpy as np
 
 def calculate_professor_metrics(professor_id):
     """Calculate aggregate metrics for a professor"""
@@ -32,10 +31,7 @@ def calculate_professor_metrics(professor_id):
     return metrics
 
 def get_sentiment_summary(professor_id):
-    """Get sentiment analysis summary for a professor"""
-    from collections import Counter
-    from itertools import chain
-    
+    """Get sentiment analysis summary for a professor"""    
     sentiments = Sentiment.objects.filter(professor_id=professor_id)
     
     # Get word frequencies with gender information
@@ -46,17 +42,22 @@ def get_sentiment_summary(professor_id):
     male_sentiments = sentiments_with_gender.filter(gender='Male')
     female_sentiments = sentiments_with_gender.filter(gender='Female')
     
-    # Get gender-specific term frequencies
+    # Get gender-specific term frequencies for both VADER and LEXICON
     def get_term_frequencies(queryset, terms_field):
         terms = chain.from_iterable(s[terms_field] for s in queryset if s[terms_field])
         return Counter(terms)
     
-    male_pos_counter = get_term_frequencies(male_sentiments.values('positive_terms'), 'positive_terms')
-    male_neg_counter = get_term_frequencies(male_sentiments.values('negative_terms'), 'negative_terms')
-    female_pos_counter = get_term_frequencies(female_sentiments.values('positive_terms'), 'positive_terms')
-    female_neg_counter = get_term_frequencies(female_sentiments.values('negative_terms'), 'negative_terms')
+    # Get frequencies for both VADER and LEXICON terms
+    male_pos_lexicon = get_term_frequencies(male_sentiments.values('positive_terms_lexicon'), 'positive_terms_lexicon')
+    male_neg_lexicon = get_term_frequencies(male_sentiments.values('negative_terms_lexicon'), 'negative_terms_lexicon')
+    female_pos_lexicon = get_term_frequencies(female_sentiments.values('positive_terms_lexicon'), 'positive_terms_lexicon')
+    female_neg_lexicon = get_term_frequencies(female_sentiments.values('negative_terms_lexicon'), 'negative_terms_lexicon')
     
-    # Calculate relative frequencies and bias
+    male_pos_vader = get_term_frequencies(male_sentiments.values('positive_terms_vader'), 'positive_terms_vader')
+    male_neg_vader = get_term_frequencies(male_sentiments.values('negative_terms_vader'), 'negative_terms_vader')
+    female_pos_vader = get_term_frequencies(female_sentiments.values('positive_terms_vader'), 'positive_terms_vader')
+    female_neg_vader = get_term_frequencies(female_sentiments.values('negative_terms_vader'), 'negative_terms_vader')
+    
     def calculate_gender_bias(male_counter, female_counter, bias_threshold=1.1):
         all_terms = set(male_counter.keys()) | set(female_counter.keys())
         male_total = sum(male_counter.values()) or 1
@@ -69,13 +70,12 @@ def get_sentiment_summary(professor_id):
             male_rel_freq = male_freq / male_total
             female_rel_freq = female_freq / female_total
             
-            # Determine bias
             if male_rel_freq > bias_threshold * female_rel_freq:
                 bias = 'Male'
             elif female_rel_freq > bias_threshold * male_rel_freq:
                 bias = 'Female'
             else:
-                bias = 'Neutral'
+                continue
                 
             result.append({
                 'term': term,
@@ -84,9 +84,24 @@ def get_sentiment_summary(professor_id):
                 'bias': bias
             })
         
-        return sorted(result, key=lambda x: max(x['male_freq'], x['female_freq']), reverse=True)[:10]
+        return sorted(result, key=lambda x: max(x['male_freq'], x['female_freq']), reverse=True)[:20]
     
-    # Get existing sentiment summary data
+    # Calculate term frequencies for all sentiments
+    all_pos_lexicon = Counter()
+    all_neg_lexicon = Counter()
+    all_pos_vader = Counter()
+    all_neg_vader = Counter()
+    
+    for s in sentiments:
+        if s.positive_terms_lexicon:
+            all_pos_lexicon.update(s.positive_terms_lexicon)
+        if s.negative_terms_lexicon:
+            all_neg_lexicon.update(s.negative_terms_lexicon)
+        if s.positive_terms_vader:
+            all_pos_vader.update(s.positive_terms_vader)
+        if s.negative_terms_vader:
+            all_neg_vader.update(s.negative_terms_vader)
+    
     summary = {
         'total_comments': sentiments.count(),
         'sentiment_breakdown': {
@@ -99,18 +114,28 @@ def get_sentiment_summary(professor_id):
             'negative': sentiments.aggregate(Avg('vader_negative'))['vader_negative__avg'] or 0
         },
         'top_words': {
-            'positive': [{'word': word, 'count': count} 
-                        for word, count in Counter(chain.from_iterable(
-                            s.positive_terms for s in sentiments if s.positive_terms
-                        )).most_common(20)],
-            'negative': [{'word': word, 'count': count} 
-                        for word, count in Counter(chain.from_iterable(
-                            s.negative_terms for s in sentiments if s.negative_terms
-                        )).most_common(20)]
+            'lexicon': {
+                'positive': [{'word': word, 'count': count} 
+                           for word, count in all_pos_lexicon.most_common(20)],
+                'negative': [{'word': word, 'count': count} 
+                           for word, count in all_neg_lexicon.most_common(20)]
+            },
+            'vader': {
+                'positive': [{'word': word, 'count': count} 
+                           for word, count in all_pos_vader.most_common(20)],
+                'negative': [{'word': word, 'count': count} 
+                           for word, count in all_neg_vader.most_common(20)]
+            }
         },
         'gender_analysis': {
-            'positive_terms': calculate_gender_bias(male_pos_counter, female_pos_counter),
-            'negative_terms': calculate_gender_bias(male_neg_counter, female_neg_counter)
+            'lexicon': {
+                'positive_terms': calculate_gender_bias(male_pos_lexicon, female_pos_lexicon),
+                'negative_terms': calculate_gender_bias(male_neg_lexicon, female_neg_lexicon)
+            },
+            'vader': {
+                'positive_terms': calculate_gender_bias(male_pos_vader, female_pos_vader),
+                'negative_terms': calculate_gender_bias(male_neg_vader, female_neg_vader)
+            }
         },
         'recent_sentiments': list(
             sentiments.order_by('-created_at')[:5]

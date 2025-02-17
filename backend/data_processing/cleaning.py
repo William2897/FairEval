@@ -12,7 +12,7 @@ def clean_data(df):
         'would_take_again_percent', 'avg_rating', 'rating_comment',
         'rating_flagStatus', 'rating_class', 'rating_helpfulRating',
         'rating_clarityRating', 'rating_isForOnlineClass', 
-        'rating_difficultyRating', 'rating_isForCredit'
+        'rating_difficultyRating', 'rating_isForCredit','sentiment','confidence'
     ]
     
     # Verify columns exist

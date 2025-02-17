@@ -1,5 +1,6 @@
 from django.utils import timezone
 from datetime import timedelta
+from collections import Counter  # Add Counter import
 from rest_framework import viewsets, permissions, filters, status
 from rest_framework import pagination  # added import for pagination
 from rest_framework.decorators import action
@@ -188,41 +189,32 @@ class ProfessorViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['get'])
     def sentiment_analysis(self, request, professor_id=None):
         """Get detailed sentiment analysis for a specific professor's ratings"""
+        # Check if user is admin for institution-wide data
+        if professor_id == 'institution' and not request.user.role.role == 'ADMIN':
+            return Response({
+                "error": "Only administrators can view institution-wide sentiment analysis"
+            }, status=status.HTTP_403_FORBIDDEN)
+
         try:
-            professor = self.get_object()
-            summary = get_sentiment_summary(professor.professor_id)
-            if not summary['total_comments']:
+            if professor_id == 'institution':
+                # Get institution-wide data
+                summary = {
+                    'gender_analysis': {
+                        'positive_terms': self._get_institution_gender_terms(positive=True),
+                        'negative_terms': self._get_institution_gender_terms(positive=False)
+                    }
+                }
+            else:
+                professor = self.get_object()
+                summary = get_sentiment_summary(professor.professor_id)
+            
+            if not summary:
                 return Response({
-                    "error": "No sentiment analysis available for this professor"
+                    "error": "No sentiment analysis available"
                 }, status=status.HTTP_404_NOT_FOUND)
             
-            # Count sentiments
-            positive_count = sum(1 for s in summary.get('recent_sentiments', []) if s['sentiment'] == 1)
-            negative_count = sum(1 for s in summary.get('recent_sentiments', []) if s['sentiment'] == 0)
+            return Response(summary)
             
-            # Restructure the data to match frontend expectations
-            response_data = {
-                'sentiment_counts': {
-                    'positive': positive_count,
-                    'negative': negative_count
-                },
-                'vader_scores': summary.get('vader_scores', {
-                    'compound': 0,
-                    'pos': 0,
-                    'neg': 0
-                }),
-                'top_words': summary.get('top_words', {
-                    'positive': [],
-                    'negative': []
-                }),
-                'gender_analysis': {
-                    'positive_terms': summary.get('gender_analysis', {}).get('positive_terms', []),
-                    'negative_terms': summary.get('gender_analysis', {}).get('negative_terms', [])
-                },
-                'recent_sentiments': summary.get('recent_sentiments', [])
-            }
-            
-            return Response(response_data)
         except Http404:
             return Response({
                 "error": f"Professor with ID {professor_id} not found"
@@ -231,6 +223,63 @@ class ProfessorViewSet(viewsets.ModelViewSet):
             return Response({
                 "error": f"Error fetching sentiment analysis: {str(e)}"
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    def _get_institution_gender_terms(self, positive=True):
+        """Helper method to get institution-wide gender-based term analysis"""
+        from django.db.models import F
+        from collections import Counter
+        from itertools import chain
+
+        sentiments = Sentiment.objects.all().annotate(
+            gender=F('professor__gender')
+        ).filter(gender__in=['Male', 'Female'])
+        
+        male_sentiments = sentiments.filter(gender='Male')
+        female_sentiments = sentiments.filter(gender='Female')
+        
+        field = 'positive_terms' if positive else 'negative_terms'
+        
+        # Get gender-specific term frequencies
+        def get_term_frequencies(queryset):
+            terms = chain.from_iterable(
+                s[field] for s in queryset.values(field) 
+                if s[field]
+            )
+            return Counter(terms)
+        
+        male_counter = get_term_frequencies(male_sentiments)
+        female_counter = get_term_frequencies(female_sentiments)
+        
+        # Calculate bias
+        def calculate_gender_bias(male_counter, female_counter, bias_threshold=1.1):
+            all_terms = set(male_counter.keys()) | set(female_counter.keys())
+            male_total = sum(male_counter.values()) or 1
+            female_total = sum(female_counter.values()) or 1
+            
+            result = []
+            for term in all_terms:
+                male_freq = male_counter[term]
+                female_freq = female_counter[term]
+                male_rel_freq = male_freq / male_total
+                female_rel_freq = female_freq / female_total
+                
+                if male_rel_freq > bias_threshold * female_rel_freq:
+                    bias = 'Male'
+                elif female_rel_freq > bias_threshold * male_rel_freq:
+                    bias = 'Female'
+                else:
+                    continue  # Skip neutral terms
+                    
+                result.append({
+                    'term': term,
+                    'male_freq': male_freq,
+                    'female_freq': female_freq,
+                    'bias': bias
+                })
+            
+            return sorted(result, key=lambda x: max(x['male_freq'], x['female_freq']), reverse=True)[:20]
+        
+        return calculate_gender_bias(male_counter, female_counter)
 
     @action(detail=True, methods=['get'], url_path='sentiment-analysis')
     def sentiment_analysis_kebab(self, request, professor_id=None):
@@ -356,6 +405,82 @@ class ProfessorViewSet(viewsets.ModelViewSet):
             "total_ratings": metrics.get('total_ratings', 0),
             "last_updated": timezone.now().isoformat()
         })
+
+    @action(detail=True, methods=['get'])
+    def word_clouds(self, request, professor_id=None):
+        """Get word cloud data for both VADER and Lexicon analyses"""
+        # Check if user is admin for institution-wide data
+        if professor_id == 'institution' and not request.user.role.role == 'ADMIN':
+            return Response({
+                "error": "Only administrators can view institution-wide sentiment analysis"
+            }, status=status.HTTP_403_FORBIDDEN)
+
+        try:
+            if professor_id == 'institution':
+                sentiments = Sentiment.objects.all()
+            else:
+                professor = self.get_object()
+                sentiments = Sentiment.objects.filter(professor_id=professor.professor_id)
+            
+            if not sentiments.exists():
+                return Response({
+                    "error": "No sentiment data available"
+                }, status=status.HTTP_404_NOT_FOUND)
+
+            # Initialize Counters for both VADER and Lexicon terms
+            vader_pos_terms = Counter()
+            vader_neg_terms = Counter()
+            lexicon_pos_terms = Counter()
+            lexicon_neg_terms = Counter()
+
+            # Process terms from each sentiment
+            for sentiment in sentiments:
+                # Update VADER term counters
+                if sentiment.positive_terms_vader:
+                    vader_pos_terms.update(sentiment.positive_terms_vader)
+                if sentiment.negative_terms_vader:
+                    vader_neg_terms.update(sentiment.negative_terms_vader)
+                
+                # Update Lexicon term counters
+                if sentiment.positive_terms_lexicon:
+                    lexicon_pos_terms.update(sentiment.positive_terms_lexicon)
+                if sentiment.negative_terms_lexicon:
+                    lexicon_neg_terms.update(sentiment.negative_terms_lexicon)
+
+            # Create response with filtered terms
+            response_data = {
+                'vader': {
+                    'positive': [{'word': word, 'count': count} 
+                               for word, count in vader_pos_terms.most_common(50) 
+                               if word and word.strip()],
+                    'negative': [{'word': word, 'count': count} 
+                               for word, count in vader_neg_terms.most_common(50) 
+                               if word and word.strip()]
+                },
+                'lexicon': {
+                    'positive': [{'word': word, 'count': count} 
+                               for word, count in lexicon_pos_terms.most_common(50) 
+                               if word and word.strip()],
+                    'negative': [{'word': word, 'count': count} 
+                               for word, count in lexicon_neg_terms.most_common(50) 
+                               if word and word.strip()]
+                }
+            }
+            
+            return Response(response_data)
+            
+        except Http404:
+            return Response({
+                "error": f"Professor with ID {professor_id} not found"
+            }, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            import traceback
+            print(f"Error in word_clouds endpoint: {str(e)}")
+            print(traceback.format_exc())
+            return Response({
+                "error": f"Error fetching word cloud data: {str(e)}",
+                "traceback": traceback.format_exc()
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class RatingViewSet(viewsets.ModelViewSet):
     queryset = Rating.objects.all()
