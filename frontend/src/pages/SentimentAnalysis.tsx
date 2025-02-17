@@ -5,6 +5,7 @@ import { WordCloudVisualization } from '../components/WordCloudVisualization';
 import { GenderSentimentVisualization } from '../components/GenderSentimentVisualization';
 import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
+import { Tab, TabPanel, TabPanels } from '@headlessui/react';
 
 interface WordCloudData {
   vader: {
@@ -71,7 +72,7 @@ function SentimentAnalysis() {
       const { data } = await axios.get(`/api/professors/institution/word_clouds/`);
       return data;
     },
-    enabled: !!user?.username && user?.role?.role === 'ADMIN' // Only fetch for admin users
+    enabled: !!user?.username && user?.role?.role === 'ADMIN'
   });
 
   const { data: genderData } = useQuery<GenderAnalysisData>({
@@ -80,7 +81,7 @@ function SentimentAnalysis() {
       const { data } = await axios.get('/api/professors/institution/sentiment-analysis/');
       return data;
     },
-    enabled: !!user?.username && user?.role?.role === 'ADMIN' // Only fetch for admin users
+    enabled: !!user?.username && user?.role?.role === 'ADMIN'
   });
 
   if (!user) {
@@ -107,78 +108,105 @@ function SentimentAnalysis() {
           </>
         )}
 
-        {user?.role?.role === 'ADMIN' && (
-          <>
-            {genderData?.gender_analysis && (
-              <div className="space-y-8">
-                <h2 className="text-xl font-bold text-gray-900 mb-4">Gender-Based Sentiment Analysis (Institution-wide)</h2>
-                
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-800 mb-4">VADER Analysis</h3>
+        {user?.role?.role === 'ADMIN' && wordCloudData && genderData?.gender_analysis && (
+          <div className="space-y-8">
+            <Tab.Group>
+              <Tab.List className="flex space-x-1 rounded-xl bg-indigo-100 p-1 mb-6">
+                <Tab
+                  className={({ selected }) =>
+                    `w-full rounded-lg py-2.5 text-sm font-medium leading-5 ${
+                      selected
+                        ? 'bg-white text-indigo-700 shadow'
+                        : 'text-gray-700 hover:bg-white/[0.12] hover:text-indigo-600'
+                    }`
+                  }
+                >
+                  Word Cloud Analysis
+                </Tab>
+                <Tab
+                  className={({ selected }) =>
+                    `w-full rounded-lg py-2.5 text-sm font-medium leading-5 ${
+                      selected
+                        ? 'bg-white text-indigo-700 shadow'
+                        : 'text-gray-700 hover:bg-white/[0.12] hover:text-indigo-600'
+                    }`
+                  }
+                >
+                  Gender-Based Analysis
+                </Tab>
+              </Tab.List>
+
+              <TabPanels>
+                <TabPanel>
+                  <div>
+                    <h2 className="text-xl font-bold text-gray-900 mb-4">VADER Sentiment Word Clouds (Institution-wide)</h2>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <WordCloudVisualization
+                        words={wordCloudData.vader.positive}
+                        title="VADER Positive Terms"
+                        colorScheme="positive"
+                      />
+                      <WordCloudVisualization
+                        words={wordCloudData.vader.negative}
+                        title="VADER Negative Terms"
+                        colorScheme="negative"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="mt-8">
+                    <h2 className="text-xl font-bold text-gray-900 mb-4">Opinion Lexicon Word Clouds (Institution-wide)</h2>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <WordCloudVisualization
+                        words={wordCloudData.lexicon.positive}
+                        title="Lexicon Positive Terms"
+                        colorScheme="positive"
+                      />
+                      <WordCloudVisualization
+                        words={wordCloudData.lexicon.negative}
+                        title="Lexicon Negative Terms"
+                        colorScheme="negative"
+                      />
+                    </div>
+                  </div>
+                </TabPanel>
+
+                <TabPanel>
                   <div className="space-y-8">
-                    <GenderSentimentVisualization
-                      terms={genderData.gender_analysis.vader.positive_terms}
-                      title="Top Biased Positive Terms (VADER)"
-                    />
-                    <GenderSentimentVisualization
-                      terms={genderData.gender_analysis.vader.negative_terms}
-                      title="Top Biased Negative Terms (VADER)"
-                    />
-                  </div>
-                </div>
+                    <h2 className="text-xl font-bold text-gray-900 mb-4">Gender-Based Sentiment Analysis (Institution-wide)</h2>
+                    
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-800 mb-4">VADER Analysis</h3>
+                      <div className="space-y-8">
+                        <GenderSentimentVisualization
+                          terms={genderData.gender_analysis.vader.positive_terms}
+                          title="Top Biased Positive Terms (VADER)"
+                        />
+                        <GenderSentimentVisualization
+                          terms={genderData.gender_analysis.vader.negative_terms}
+                          title="Top Biased Negative Terms (VADER)"
+                        />
+                      </div>
+                    </div>
 
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-800 mb-4">Opinion Lexicon Analysis</h3>
-                  <div className="space-y-8">
-                    <GenderSentimentVisualization
-                      terms={genderData.gender_analysis.lexicon.positive_terms}
-                      title="Top Biased Positive Terms (Lexicon)"
-                    />
-                    <GenderSentimentVisualization
-                      terms={genderData.gender_analysis.lexicon.negative_terms}
-                      title="Top Biased Negative Terms (Lexicon)"
-                    />
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-800 mb-4">Opinion Lexicon Analysis</h3>
+                      <div className="space-y-8">
+                        <GenderSentimentVisualization
+                          terms={genderData.gender_analysis.lexicon.positive_terms}
+                          title="Top Biased Positive Terms (Lexicon)"
+                        />
+                        <GenderSentimentVisualization
+                          terms={genderData.gender_analysis.lexicon.negative_terms}
+                          title="Top Biased Negative Terms (Lexicon)"
+                        />
+                      </div>
+                    </div>
                   </div>
-                </div>
-              </div>
-            )}
-
-            {wordCloudData && (
-              <>
-                <div>
-                  <h2 className="text-xl font-bold text-gray-900 mb-4">VADER Sentiment Word Clouds (Institution-wide)</h2>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <WordCloudVisualization
-                      words={wordCloudData.vader.positive}
-                      title="VADER Positive Terms"
-                      colorScheme="positive"
-                    />
-                    <WordCloudVisualization
-                      words={wordCloudData.vader.negative}
-                      title="VADER Negative Terms"
-                      colorScheme="negative"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <h2 className="text-xl font-bold text-gray-900 mb-4">Opinion Lexicon Word Clouds (Institution-wide)</h2>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <WordCloudVisualization
-                      words={wordCloudData.lexicon.positive}
-                      title="Lexicon Positive Terms"
-                      colorScheme="positive"
-                    />
-                    <WordCloudVisualization
-                      words={wordCloudData.lexicon.negative}
-                      title="Lexicon Negative Terms"
-                      colorScheme="negative"
-                    />
-                  </div>
-                </div>
-              </>
-            )}
-          </>
+                </TabPanel>
+              </TabPanels>
+            </Tab.Group>
+          </div>
         )}
       </div>
     </div>
