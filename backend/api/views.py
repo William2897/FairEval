@@ -200,8 +200,14 @@ class ProfessorViewSet(viewsets.ModelViewSet):
                 # Get institution-wide data
                 summary = {
                     'gender_analysis': {
-                        'positive_terms': self._get_institution_gender_terms(positive=True),
-                        'negative_terms': self._get_institution_gender_terms(positive=False)
+                        'vader': {
+                            'positive_terms': self._get_institution_gender_terms(positive=True, sentiment_type='vader'),
+                            'negative_terms': self._get_institution_gender_terms(positive=False, sentiment_type='vader')
+                        },
+                        'lexicon': {
+                            'positive_terms': self._get_institution_gender_terms(positive=True, sentiment_type='lexicon'),
+                            'negative_terms': self._get_institution_gender_terms(positive=False, sentiment_type='lexicon')
+                        }
                     }
                 }
             else:
@@ -220,26 +226,36 @@ class ProfessorViewSet(viewsets.ModelViewSet):
                 "error": f"Professor with ID {professor_id} not found"
             }, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
+            import traceback
+            print(f"Error in sentiment analysis endpoint: {str(e)}")
+            print(traceback.format_exc())
             return Response({
-                "error": f"Error fetching sentiment analysis: {str(e)}"
+                "error": f"Error fetching sentiment analysis: {str(e)}",
+                "traceback": traceback.format_exc()
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-    def _get_institution_gender_terms(self, positive=True):
+    def _get_institution_gender_terms(self, positive=True, sentiment_type='vader'):
         """Helper method to get institution-wide gender-based term analysis"""
         from django.db.models import F
         from collections import Counter
         from itertools import chain
 
+        # Get all sentiments with gender annotation
         sentiments = Sentiment.objects.all().annotate(
             gender=F('professor__gender')
         ).filter(gender__in=['Male', 'Female'])
         
+        # Split by gender
         male_sentiments = sentiments.filter(gender='Male')
         female_sentiments = sentiments.filter(gender='Female')
         
-        field = 'positive_terms' if positive else 'negative_terms'
+        # Determine which field to analyze
+        if sentiment_type == 'vader':
+            field = 'positive_terms_vader' if positive else 'negative_terms_vader'
+        else:
+            field = 'positive_terms_lexicon' if positive else 'negative_terms_lexicon'
         
-        # Get gender-specific term frequencies
+        # Get term frequencies for each gender
         def get_term_frequencies(queryset):
             terms = chain.from_iterable(
                 s[field] for s in queryset.values(field) 
@@ -250,36 +266,62 @@ class ProfessorViewSet(viewsets.ModelViewSet):
         male_counter = get_term_frequencies(male_sentiments)
         female_counter = get_term_frequencies(female_sentiments)
         
-        # Calculate bias
-        def calculate_gender_bias(male_counter, female_counter, bias_threshold=1.1):
-            all_terms = set(male_counter.keys()) | set(female_counter.keys())
-            male_total = sum(male_counter.values()) or 1
-            female_total = sum(female_counter.values()) or 1
-            
-            result = []
-            for term in all_terms:
-                male_freq = male_counter[term]
-                female_freq = female_counter[term]
-                male_rel_freq = male_freq / male_total
-                female_rel_freq = female_freq / female_total
-                
-                if male_rel_freq > bias_threshold * female_rel_freq:
-                    bias = 'Male'
-                elif female_rel_freq > bias_threshold * male_rel_freq:
-                    bias = 'Female'
-                else:
-                    continue  # Skip neutral terms
-                    
-                result.append({
-                    'term': term,
-                    'male_freq': male_freq,
-                    'female_freq': female_freq,
-                    'bias': bias
-                })
-            
-            return sorted(result, key=lambda x: max(x['male_freq'], x['female_freq']), reverse=True)[:20]
+        # Calculate totals for relative frequencies
+        male_total = sum(male_counter.values()) or 1
+        female_total = sum(female_counter.values()) or 1
         
-        return calculate_gender_bias(male_counter, female_counter)
+        # Get all unique terms
+        all_terms = set(male_counter.keys()) | set(female_counter.keys())
+        
+        # Calculate relative frequencies and bias
+        terms_data = []
+        bias_threshold = 1.1
+        
+        for term in all_terms:
+            male_freq = male_counter[term]
+            female_freq = female_counter[term]
+            
+            # Calculate relative frequencies
+            male_rel_freq = male_freq / male_total
+            female_rel_freq = female_freq / female_total
+            
+            # Only include terms that appear more than once total
+            if male_freq + female_freq < 2:
+                continue
+            
+            # Determine bias
+            if male_rel_freq > bias_threshold * female_rel_freq:
+                bias = 'Male'
+            elif female_rel_freq > bias_threshold * male_rel_freq:
+                bias = 'Female'
+            else:
+                continue  # Skip neutral terms
+            
+            terms_data.append({
+                'term': term,
+                'male_freq': male_freq,
+                'female_freq': female_freq,
+                'male_rel_freq': male_rel_freq,
+                'female_rel_freq': female_rel_freq,
+                'bias': bias,
+                'total_freq': male_freq + female_freq
+            })
+        
+        # Sort by total frequency and get top 10 for each bias
+        male_biased = sorted(
+            [term for term in terms_data if term['bias'] == 'Male'],
+            key=lambda x: x['male_freq'],
+            reverse=True
+        )[:10]
+        
+        female_biased = sorted(
+            [term for term in terms_data if term['bias'] == 'Female'],
+            key=lambda x: x['female_freq'],
+            reverse=True
+        )[:10]
+        
+        # Combine the results
+        return male_biased + female_biased
 
     @action(detail=True, methods=['get'], url_path='sentiment-analysis')
     def sentiment_analysis_kebab(self, request, professor_id=None):

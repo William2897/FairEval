@@ -1,65 +1,89 @@
 import React from 'react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer
+} from 'recharts';
 
-interface GenderTermData {
+interface Term {
   term: string;
   male_freq: number;
   female_freq: number;
   bias: 'Male' | 'Female';
+  total_freq: number;
+  male_rel_freq: number;
+  female_rel_freq: number;
 }
 
-interface Props {
-  positiveTerms: GenderTermData[];
-  negativeTerms: GenderTermData[];
-  title?: string;
+interface GenderSentimentVisualizationProps {
+  terms: Term[];
+  title: string;
 }
 
-export const GenderSentimentVisualization: React.FC<Props> = ({ 
-  positiveTerms, 
-  negativeTerms, 
-  title = "Gender-Based Term Analysis" 
+export const GenderSentimentVisualization: React.FC<GenderSentimentVisualizationProps> = ({
+  terms,
+  title
 }) => {
+  // Separate male and female biased terms
+  const maleBiased = terms
+    .filter(term => term.bias === 'Male')
+    .sort((a, b) => b.male_freq - a.male_freq)
+    .slice(0, 10);
+
+  const femaleBiased = terms
+    .filter(term => term.bias === 'Female')
+    .sort((a, b) => b.female_freq - a.female_freq)
+    .slice(0, 10);
+
+  const transformDataForChart = (terms: Term[]) => {
+    return terms.map(term => ({
+      term: term.term,
+      Male: term.bias === 'Male' ? term.male_freq : 0,
+      Female: term.bias === 'Female' ? term.female_freq : 0
+    }));
+  };
+
   return (
-    <div className="bg-white p-6 rounded-lg shadow-md">
-      <h2 className="text-xl font-semibold text-gray-900 mb-4">{title}</h2>
-      
-      {/* Positive Terms */}
-      <div>
-        <h3 className="text-lg font-medium text-gray-800 mb-3">Positive Terms by Gender</h3>
-        <div className="h-64 mb-8">
+    <div className="w-full">
+      <h3 className="text-lg font-semibold mb-4">{title}</h3>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className="h-[400px]">
+          <h4 className="text-md font-medium mb-2">Male-Biased Terms</h4>
           <ResponsiveContainer width="100%" height="100%">
             <BarChart
-              data={positiveTerms}
               layout="vertical"
-              margin={{ top: 5, right: 30, left: 80, bottom: 5 }}
+              data={transformDataForChart(maleBiased)}
+              margin={{ top: 5, right: 30, left: 100, bottom: 5 }}
             >
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis type="number" />
               <YAxis dataKey="term" type="category" />
               <Tooltip />
-              <Bar dataKey="male_freq" name="Male" fill="#3B82F6" />
-              <Bar dataKey="female_freq" name="Female" fill="#EC4899" />
+              <Legend />
+              <Bar dataKey="Male" fill="#2563eb" name="Male Frequency" />
             </BarChart>
           </ResponsiveContainer>
         </div>
-      </div>
-
-      {/* Negative Terms */}
-      <div>
-        <h3 className="text-lg font-medium text-gray-800 mb-3">Negative Terms by Gender</h3>
-        <div className="h-64">
+        
+        <div className="h-[400px]">
+          <h4 className="text-md font-medium mb-2">Female-Biased Terms</h4>
           <ResponsiveContainer width="100%" height="100%">
             <BarChart
-              data={negativeTerms}
               layout="vertical"
-              margin={{ top: 5, right: 30, left: 80, bottom: 5 }}
+              data={transformDataForChart(femaleBiased)}
+              margin={{ top: 5, right: 30, left: 100, bottom: 5 }}
             >
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis type="number" />
               <YAxis dataKey="term" type="category" />
               <Tooltip />
-              <Bar dataKey="male_freq" name="Male" fill="#3B82F6" />
-              <Bar dataKey="female_freq" name="Female" fill="#EC4899" />
+              <Legend />
+              <Bar dataKey="Female" fill="#f97316" name="Female Frequency" />
             </BarChart>
           </ResponsiveContainer>
         </div>

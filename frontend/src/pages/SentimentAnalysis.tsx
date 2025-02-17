@@ -19,18 +19,46 @@ interface WordCloudData {
 
 interface GenderAnalysisData {
   gender_analysis: {
-    positive_terms: Array<{
-      term: string;
-      male_freq: number;
-      female_freq: number;
-      bias: 'Male' | 'Female';
-    }>;
-    negative_terms: Array<{
-      term: string;
-      male_freq: number;
-      female_freq: number;
-      bias: 'Male' | 'Female';
-    }>;
+    vader: {
+      positive_terms: Array<{
+        term: string;
+        male_freq: number;
+        female_freq: number;
+        male_rel_freq: number;
+        female_rel_freq: number;
+        bias: 'Male' | 'Female';
+        total_freq: number;
+      }>;
+      negative_terms: Array<{
+        term: string;
+        male_freq: number;
+        female_freq: number;
+        male_rel_freq: number;
+        female_rel_freq: number;
+        bias: 'Male' | 'Female';
+        total_freq: number;
+      }>;
+    };
+    lexicon: {
+      positive_terms: Array<{
+        term: string;
+        male_freq: number;
+        female_freq: number;
+        male_rel_freq: number;
+        female_rel_freq: number;
+        bias: 'Male' | 'Female';
+        total_freq: number;
+      }>;
+      negative_terms: Array<{
+        term: string;
+        male_freq: number;
+        female_freq: number;
+        male_rel_freq: number;
+        female_rel_freq: number;
+        bias: 'Male' | 'Female';
+        total_freq: number;
+      }>;
+    };
   };
 }
 
@@ -82,13 +110,36 @@ function SentimentAnalysis() {
         {user?.role?.role === 'ADMIN' && (
           <>
             {genderData?.gender_analysis && (
-              <div>
+              <div className="space-y-8">
                 <h2 className="text-xl font-bold text-gray-900 mb-4">Gender-Based Sentiment Analysis (Institution-wide)</h2>
-                <GenderSentimentVisualization
-                  positiveTerms={genderData.gender_analysis.positive_terms}
-                  negativeTerms={genderData.gender_analysis.negative_terms}
-                  title="Gender-Based Term Analysis"
-                />
+                
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-800 mb-4">VADER Analysis</h3>
+                  <div className="space-y-8">
+                    <GenderSentimentVisualization
+                      terms={genderData.gender_analysis.vader.positive_terms}
+                      title="Top Biased Positive Terms (VADER)"
+                    />
+                    <GenderSentimentVisualization
+                      terms={genderData.gender_analysis.vader.negative_terms}
+                      title="Top Biased Negative Terms (VADER)"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-800 mb-4">Opinion Lexicon Analysis</h3>
+                  <div className="space-y-8">
+                    <GenderSentimentVisualization
+                      terms={genderData.gender_analysis.lexicon.positive_terms}
+                      title="Top Biased Positive Terms (Lexicon)"
+                    />
+                    <GenderSentimentVisualization
+                      terms={genderData.gender_analysis.lexicon.negative_terms}
+                      title="Top Biased Negative Terms (Lexicon)"
+                    />
+                  </div>
+                </div>
               </div>
             )}
 
