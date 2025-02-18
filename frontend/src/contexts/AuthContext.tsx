@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 
 // Create an axios instance with the configuration
@@ -40,6 +41,7 @@ interface AuthContextType {
   user: User | null;
   login: (username: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
+  authStateChanged: number; // Add this to trigger re-renders
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -49,6 +51,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const savedUser = localStorage.getItem('user');
     return savedUser ? JSON.parse(savedUser) : null;
   });
+  const [authStateChanged, setAuthStateChanged] = useState(0);
+  const queryClient = useQueryClient();
 
   useEffect(() => {
     // Check authentication on mount
@@ -58,17 +62,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (response.data.authenticated) {
           setUser(response.data);
           localStorage.setItem('user', JSON.stringify(response.data));
+          setAuthStateChanged(prev => prev + 1); // Increment counter on auth change
         } else {
           setUser(null);
           localStorage.removeItem('user');
+          queryClient.clear(); // Clear all cached data
+          setAuthStateChanged(prev => prev + 1);
         }
       } catch (error) {
         setUser(null);
         localStorage.removeItem('user');
+        queryClient.clear(); // Clear all cached data
+        setAuthStateChanged(prev => prev + 1);
       }
     };
     checkAuth();
-  }, []);
+  }, [queryClient]);
 
   const login = useCallback(async (username: string, password: string) => {
     try {
@@ -80,11 +89,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const userData = response.data.user;
       setUser(userData);
       localStorage.setItem('user', JSON.stringify(userData));
+      queryClient.clear(); // Clear previous user's cached data
+      setAuthStateChanged(prev => prev + 1); // Increment counter on login
     } catch (error) {
       console.error('Login error:', error);
       throw new Error('Login failed');
     }
-  }, []);
+  }, [queryClient]);
 
   const logout = useCallback(async () => {
     try {
@@ -100,14 +111,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           .replace(/^ +/, '')
           .replace(/=.*/, `=;expires=${new Date().toUTCString()};path=/`);
       });
+      queryClient.clear(); // Clear all cached data
+      setAuthStateChanged(prev => prev + 1); // Increment counter on logout
     }
-  }, []);
+  }, [queryClient]);
 
   const value = {
     isAuthenticated: !!user,
     user,
     login,
     logout,
+    authStateChanged, // Include in context value
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

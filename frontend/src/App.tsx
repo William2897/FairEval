@@ -2,8 +2,7 @@ import { RouterProvider } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import router from './routes';
-import { AuthProvider } from './contexts/AuthContext';
-import { useAuth } from './contexts/AuthContext';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { useEffect } from 'react';
 import axios, { AxiosError } from 'axios';
 
@@ -16,6 +15,8 @@ const queryClient = new QueryClient({
         }
         return failureCount < 3;
       },
+      staleTime: 0, // Ensure data is always validated
+      gcTime: 1000 * 60 * 5, // Cache for 5 minutes before garbage collection
     },
   },
 });
@@ -27,14 +28,14 @@ function AppContent() {
     const checkAuth = async () => {
       try {
         const response = await axios.get('/api/auth/me/');
-        // If we get here, we're authenticated
         if (!response.data.authenticated) {
-          logout();
+          await logout();
+          queryClient.clear(); // Clear all queries when logging out
         }
       } catch (error) {
-        // If we get a 401/403, we're not authenticated
         if (error instanceof AxiosError && (error.response?.status === 401 || error.response?.status === 403)) {
-          logout();
+          await logout();
+          queryClient.clear(); // Clear all queries when logging out
         }
       }
     };
