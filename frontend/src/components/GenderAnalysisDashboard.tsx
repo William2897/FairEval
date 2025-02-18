@@ -11,6 +11,7 @@ interface GenderDistribution {
   male_count: number;
   female_percent: number;
   male_percent: number;
+  rating?: number;
 }
 
 interface GenderData {
@@ -156,6 +157,7 @@ export const GenderAnalysisDashboard: React.FC = () => {
               <thead className="bg-gray-50">
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Discipline</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Rating</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Total Faculty</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Gender Distribution</th>
                 </tr>
@@ -165,6 +167,9 @@ export const GenderAnalysisDashboard: React.FC = () => {
                   <tr key={analysis.discipline} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                       {analysis.discipline}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {analysis.rating?.toFixed(2) || 'N/A'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       {analysis.total}
@@ -210,6 +215,7 @@ export const GenderAnalysisDashboard: React.FC = () => {
               <thead className="bg-gray-50">
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Discipline</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Rating</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Total Faculty</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Gender Distribution</th>
                 </tr>
@@ -219,6 +225,9 @@ export const GenderAnalysisDashboard: React.FC = () => {
                   <tr key={`discipline-bottom-${analysis.discipline}`} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                       {analysis.discipline}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {analysis.rating?.toFixed(2) || 'N/A'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       {analysis.total}
@@ -273,6 +282,7 @@ export const GenderAnalysisDashboard: React.FC = () => {
               <thead className="bg-gray-50">
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Sub-Discipline</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Rating</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Total Faculty</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Gender Distribution</th>
                 </tr>
@@ -282,6 +292,9 @@ export const GenderAnalysisDashboard: React.FC = () => {
                   <tr key={`subdiscipline-top-${analysis.sub_discipline || `unnamed-${index}`}`} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                       {analysis.sub_discipline || 'Unnamed Sub-discipline'}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {analysis.rating?.toFixed(2) || 'N/A'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       {analysis.total || 0}
@@ -327,6 +340,7 @@ export const GenderAnalysisDashboard: React.FC = () => {
               <thead className="bg-gray-50">
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Sub-Discipline</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Rating</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Total Faculty</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Gender Distribution</th>
                 </tr>
@@ -336,6 +350,9 @@ export const GenderAnalysisDashboard: React.FC = () => {
                   <tr key={`subdiscipline-bottom-${analysis.sub_discipline || `unnamed-${index}`}`} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                       {analysis.sub_discipline || 'Unnamed Sub-discipline'}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {analysis.rating?.toFixed(2) || 'N/A'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       {analysis.total || 0}

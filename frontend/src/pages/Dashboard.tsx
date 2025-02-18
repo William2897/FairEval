@@ -1,7 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
-import { TopicModelVisualization } from '../components/TopicModelVisualization';
-import { RecommendationDisplay } from '../components/RecommendationDisplay';
 import { DisciplineAnalysisDashboard } from '../components/DisciplineAnalysisDashboard';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -115,24 +113,9 @@ function Dashboard() {
 
       {/* Discipline Analysis Section */}
       <div>
-        <h2 className="text-xl font-bold text-gray-900 mb-4">Discipline Analysis</h2>
+        <h2 className="text-xl font-bold text-gray-900 mb-4">Discipline & Sub-Discipline Analysis</h2>
         <DisciplineAnalysisDashboard />
       </div>
-
-      {/* Show topic analysis and recommendations for professors */}
-      {user?.role?.role === 'ACADEMIC' && (
-        <>
-          <div>
-            <h2 className="text-xl font-bold text-gray-900 mb-4">Topic Analysis</h2>
-            <TopicModelVisualization professorId={user.username} />
-          </div>
-
-          <div>
-            <h2 className="text-xl font-bold text-gray-900 mb-4">Recommendations</h2>
-            <RecommendationDisplay professorId={user.username} />
-          </div>
-        </>
-      )}
     </div>
   );
 }

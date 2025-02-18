@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { 
@@ -9,35 +9,30 @@ import {
   LogOut,
   BarChart,
   Settings,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from 'lucide-react';
 
-interface NavItemProps {
-  to: string;
-  icon: React.ReactNode;
-  label: string;
-  isActive: boolean;
-}
-
-function NavItem({ to, icon, label, isActive }: NavItemProps) {
-  return (
-    <Link
-      to={to}
-      className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-colors ${
-        isActive 
-          ? 'bg-indigo-700 text-white' 
-          : 'text-gray-300 hover:bg-indigo-700 hover:text-white'
-      }`}
-    >
-      {icon}
-      <span>{label}</span>
-    </Link>
-  );
-}
-
 function Layout({ children }: { children: React.ReactNode }) {
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 1024);
   const { logout } = useAuth();
   const location = useLocation();
+
+  useEffect(() => {
+    const handleResize = () => {
+      const mobile = window.innerWidth < 1024;
+      setIsMobile(mobile);
+      if (!mobile) {
+        setIsSidebarOpen(true);
+      }
+    };
+
+    window.addEventListener('resize', handleResize);
+    handleResize(); // Initial check
+    
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   const navItems = [
     { to: '/', icon: <LayoutDashboard size={20} />, label: 'Dashboard' },
@@ -46,59 +41,120 @@ function Layout({ children }: { children: React.ReactNode }) {
     { to: '/settings', icon: <Settings size={20} />, label: 'Settings' }
   ];
 
+  const toggleSidebar = () => {
+    setIsSidebarOpen(prev => !prev);
+  };
+
   return (
-    <div className="min-h-screen bg-gray-100">
+    <div className="min-h-screen bg-gray-100 relative">
+      {/* Mobile overlay */}
+      {isMobile && isSidebarOpen && (
+        <div 
+          className="fixed inset-0 bg-black/50 z-40"
+          onClick={toggleSidebar}
+        />
+      )}
+
       {/* Sidebar */}
       <aside
-        className={`fixed top-0 left-0 z-40 h-screen transition-transform ${
-          isSidebarOpen ? 'translate-x-0' : '-translate-x-full'
-        } bg-indigo-800 text-white w-64 p-4`}
+        className={`
+          fixed top-0 left-0 h-screen bg-indigo-800 text-white z-50
+          transition-all duration-300 ease-in-out
+          ${isSidebarOpen ? 'w-64' : 'w-16'}
+          ${isMobile ? (isSidebarOpen ? 'translate-x-0' : '-translate-x-full') : 'translate-x-0'}
+        `}
       >
-        <div className="flex items-center justify-between mb-8">
-          <h1 className="text-2xl font-bold">FairEval</h1>
+        <div className="flex flex-col h-full p-4">
+          <div className="flex items-center justify-between mb-8">
+            <h1 className={`text-2xl font-bold transition-opacity duration-300 
+              ${!isSidebarOpen ? 'opacity-0 w-0 overflow-hidden' : 'opacity-100'}`}>
+              FairEval
+            </h1>
+            {!isMobile && (
+              <button
+                onClick={toggleSidebar}
+                className="text-gray-300 hover:text-white"
+              >
+                {isSidebarOpen ? <PanelLeftClose size={20} /> : <PanelLeftOpen size={20} />}
+              </button>
+            )}
+          </div>
+
+          <nav className="space-y-2 flex-1">
+            {navItems.map((item) => (
+              <Link
+                key={item.to}
+                to={item.to}
+                className={`
+                  flex items-center rounded-lg transition-colors
+                  ${!isSidebarOpen ? 'justify-center px-2' : 'px-4'} 
+                  py-2
+                  ${location.pathname === item.to
+                    ? 'bg-indigo-700 text-white'
+                    : 'text-gray-300 hover:bg-indigo-700 hover:text-white'
+                  }
+                `}
+              >
+                <div className="flex-shrink-0 w-5 h-5">
+                  {item.icon}
+                </div>
+                <span 
+                  className={`ml-2 whitespace-nowrap transition-opacity duration-300
+                    ${!isSidebarOpen ? 'opacity-0 w-0 overflow-hidden' : 'opacity-100'}
+                  `}
+                >
+                  {item.label}
+                </span>
+              </Link>
+            ))}
+          </nav>
+
           <button
-            onClick={() => setIsSidebarOpen(false)}
-            className="lg:hidden text-gray-300 hover:text-white"
+            onClick={logout}
+            className={`
+              flex items-center text-gray-300 hover:text-white transition-colors
+              ${!isSidebarOpen ? 'justify-center px-2' : 'px-4'} 
+              py-2 rounded-lg hover:bg-indigo-700
+            `}
           >
-            <X size={24} />
+            <div className="flex-shrink-0 w-5 h-5">
+              <LogOut size={20} />
+            </div>
+            <span 
+              className={`ml-2 whitespace-nowrap transition-opacity duration-300
+                ${!isSidebarOpen ? 'opacity-0 w-0 overflow-hidden' : 'opacity-100'}
+              `}
+            >
+              Logout
+            </span>
           </button>
         </div>
-
-        <nav className="space-y-2">
-          {navItems.map((item) => (
-            <NavItem
-              key={item.to}
-              {...item}
-              isActive={location.pathname === item.to}
-            />
-          ))}
-        </nav>
-
-        <button
-          onClick={logout}
-          className="absolute bottom-4 left-4 flex items-center space-x-2 text-gray-300 hover:text-white"
-        >
-          <LogOut size={20} />
-          <span>Logout</span>
-        </button>
       </aside>
 
       {/* Main content */}
-      <div className={`${isSidebarOpen ? 'lg:ml-64' : ''}`}>
+      <div 
+        className={`
+          transition-all duration-300 
+          ${isSidebarOpen ? 'lg:ml-64' : 'lg:ml-16'}
+          ${isMobile ? 'ml-0' : ''}
+        `}
+      >
         {/* Top bar */}
         <header className="bg-white shadow-sm">
           <div className="flex items-center justify-between px-4 py-3">
             <button
-              onClick={() => setIsSidebarOpen(true)}
-              className={`text-gray-600 lg:hidden ${isSidebarOpen ? 'hidden' : ''}`}
+              onClick={toggleSidebar}
+              className="text-gray-600 lg:hidden"
             >
-              <Menu size={24} />
+              {isSidebarOpen ? <X size={24} /> : <Menu size={24} />}
             </button>
           </div>
         </header>
 
         {/* Page content */}
-        <main className="p-4">{children}</main>
+        <main className="p-4">
+          {children}
+        </main>
       </div>
     </div>
   );

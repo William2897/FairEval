@@ -5,7 +5,6 @@ from .models import Rating, Sentiment, Professor
 from collections import Counter
 from itertools import chain
 from scipy import stats
-from statsmodels.stats.multicomp import pairwise_tukeyhsd
 import pandas as pd
 
 def calculate_professor_metrics(professor_id):
@@ -204,77 +203,6 @@ def analyze_discipline_gender_distribution():
     
     return list(gender_discipline_stats)
 
-def perform_discipline_tukey_hsd():
-    """Perform Tukey's HSD test for disciplines"""
-    # Get all ratings with gender and discipline info
-    ratings_data = Rating.objects.select_related('professor').values(
-        'avg_rating',
-        'professor__gender',
-        'professor__discipline',
-        'professor__sub_discipline'
-    ).exclude(
-        professor__discipline__isnull=True,
-        professor__gender__isnull=True
-    )
-    
-    # Convert to DataFrame for easier analysis
-    df = pd.DataFrame(ratings_data)
-    df = df.rename(columns={
-        'professor__gender': 'gender',
-        'professor__discipline': 'discipline',
-        'professor__sub_discipline': 'sub_discipline'
-    })
-    
-    # Group by discipline and gender
-    grouped = df.groupby(['discipline', 'gender'])['avg_rating'].agg(['mean', 'count']).reset_index()
-    
-    results = []
-    for discipline in df['discipline'].unique():
-        discipline_data = df[df['discipline'] == discipline]
-        if len(discipline_data['gender'].unique()) < 2:
-            continue
-            
-        # Perform one-way ANOVA
-        groups = [group['avg_rating'].values for _, group in discipline_data.groupby('gender')]
-        f_stat, p_value = stats.f_oneway(*groups)
-        
-        # Perform Tukey's HSD if we have enough data
-        if len(discipline_data) >= 3:
-            tukey = pairwise_tukeyhsd(
-                discipline_data['avg_rating'],
-                discipline_data['gender']
-            )
-            # Convert tukey results to dict, handling the data types properly
-            tukey_data = []
-            for row in tukey.summary().data[1:]:  # Skip header row
-                tukey_data.append({
-                    'group1': str(row[0]),
-                    'group2': str(row[1]),
-                    'meandiff': float(row[2]),
-                    'lower': float(row[3]),
-                    'upper': float(row[4]),
-                    'reject': bool(row[5] == 'True')
-                })
-        else:
-            tukey_data = None
-            
-        results.append({
-            'discipline': discipline,
-            'anova': {'f_stat': float(f_stat), 'p_value': float(p_value)},
-            'tukey': tukey_data,
-            'summary': [
-                {
-                    'discipline': row['discipline'],
-                    'gender': row['gender'],
-                    'mean': float(row['mean']),
-                    'count': int(row['count'])
-                }
-                for _, row in grouped[grouped['discipline'] == discipline].iterrows()
-            ]
-        })
-    
-    return results
-
 def calculate_gender_distribution():
     """Calculate gender distribution for top/bottom rated disciplines and sub-disciplines"""
     from django.db.models import Avg, Count, Case, When, F, FloatField
@@ -313,25 +241,29 @@ def calculate_gender_distribution():
     # Helper function to calculate distribution
     def calculate_distribution(queryset, is_sub_discipline=False):
         distributions = []
+        field_name = 'sub_discipline' if is_sub_discipline else 'discipline'
         for item in queryset:
             total = item['total'] or 1  # Avoid division by zero
             distributions.append({
-                'discipline' if not is_sub_discipline else 'sub_discipline': item.get('discipline') or item.get('sub_discipline'),
+                field_name: item[field_name],
                 'total': item['total'],
                 'female_count': item['female_count'],
                 'male_count': item['male_count'],
                 'female_percent': round((item['female_count'] * 100.0) / total, 2),
-                'male_percent': round((item['male_count'] * 100.0) / total, 2)
+                'male_percent': round((item['male_count'] * 100.0) / total, 2),
+                'rating': item['avg_rating']
             })
-        return distributions
+        # Sort by rating - will be used in descending order for top, ascending for bottom
+        return sorted(distributions, key=lambda x: x['rating'] or 0)
     
-    # Calculate gender distribution for disciplines
+    # Calculate gender distribution for disciplines with ratings
     top_disciplines_dist = Professor.objects.filter(
         discipline__in=top_3_disciplines
     ).values('discipline').annotate(
         total=Count('id'),
         female_count=Count(Case(When(gender='Female', then=1))),
-        male_count=Count(Case(When(gender='Male', then=1)))
+        male_count=Count(Case(When(gender='Male', then=1))),
+        avg_rating=Avg('ratings__avg_rating')
     )
     
     bottom_disciplines_dist = Professor.objects.filter(
@@ -339,16 +271,18 @@ def calculate_gender_distribution():
     ).values('discipline').annotate(
         total=Count('id'),
         female_count=Count(Case(When(gender='Female', then=1))),
-        male_count=Count(Case(When(gender='Male', then=1)))
+        male_count=Count(Case(When(gender='Male', then=1))),
+        avg_rating=Avg('ratings__avg_rating')
     )
     
-    # Calculate gender distribution for sub-disciplines
+    # Calculate gender distribution for sub-disciplines with ratings
     top_sub_disciplines_dist = Professor.objects.filter(
         sub_discipline__in=top_10_sub_disciplines
     ).values('sub_discipline').annotate(
         total=Count('id'),
         female_count=Count(Case(When(gender='Female', then=1))),
-        male_count=Count(Case(When(gender='Male', then=1)))
+        male_count=Count(Case(When(gender='Male', then=1))),
+        avg_rating=Avg('ratings__avg_rating')
     )
     
     bottom_sub_disciplines_dist = Professor.objects.filter(
@@ -356,17 +290,154 @@ def calculate_gender_distribution():
     ).values('sub_discipline').annotate(
         total=Count('id'),
         female_count=Count(Case(When(gender='Female', then=1))),
-        male_count=Count(Case(When(gender='Male', then=1)))
+        male_count=Count(Case(When(gender='Male', then=1))),
+        avg_rating=Avg('ratings__avg_rating')
     )
+    
+    # Sort the distributions appropriately
+    top_disciplines = calculate_distribution(top_disciplines_dist)
+    bottom_disciplines = calculate_distribution(bottom_disciplines_dist)
+    top_sub_disciplines = calculate_distribution(top_sub_disciplines_dist, True)
+    bottom_sub_disciplines = calculate_distribution(bottom_sub_disciplines_dist, True)
     
     return {
         'total_stats': total_stats,
         'disciplines': {
-            'top': calculate_distribution(top_disciplines_dist),
-            'bottom': calculate_distribution(bottom_disciplines_dist)
+            'top': list(reversed(top_disciplines)),  # Reverse for descending order
+            'bottom': bottom_disciplines  # Keep ascending order
         },
         'sub_disciplines': {
-            'top': calculate_distribution(top_sub_disciplines_dist, True),
-            'bottom': calculate_distribution(bottom_sub_disciplines_dist, True)
+            'top': list(reversed(top_sub_disciplines)),  # Reverse for descending order
+            'bottom': bottom_sub_disciplines  # Keep ascending order
         }
     }
+
+def calculate_tukey_hsd():
+    """Calculate Tukey's HSD test results for disciplines and sub-disciplines"""
+    try:
+        from scipy import stats
+        from statsmodels.stats.multicomp import pairwise_tukeyhsd
+        import pandas as pd
+        import numpy as np
+        
+        # Fetch ratings data with professor gender info
+        ratings_data = Rating.objects.select_related('professor').values(
+            'avg_rating', 
+            'professor__gender',
+            'professor__discipline',
+            'professor__sub_discipline'
+        ).exclude(
+            professor__gender__isnull=True
+        ).exclude(
+            professor__discipline__isnull=True
+        ).exclude(
+            avg_rating__isnull=True
+        )
+        
+        if not ratings_data:
+            raise ValueError("No valid ratings data found for analysis")
+        
+        # Convert to pandas DataFrame
+        df = pd.DataFrame(list(ratings_data))
+        df.columns = ['avg_rating', 'gender', 'discipline', 'sub_discipline']
+        
+        # Create combined columns for gender-discipline interaction
+        df['gender_discipline'] = df['gender'] + ' - ' + df['discipline']
+        df['gender_sub_discipline'] = df.apply(
+            lambda x: f"{x['gender']} - {x['sub_discipline']}" if pd.notnull(x['sub_discipline']) else None,
+            axis=1
+        )
+        
+        # Perform Tukey's HSD test for disciplines
+        discipline_groups = df.groupby('gender_discipline')['avg_rating'].agg(['count', 'mean'])
+        valid_disciplines = discipline_groups[discipline_groups['count'] >= 2].index
+        
+        df_filtered = df[df['gender_discipline'].isin(valid_disciplines)]
+        if len(df_filtered) < 2:
+            raise ValueError("Insufficient data for discipline analysis")
+            
+        discipline_results = pairwise_tukeyhsd(
+            df_filtered['avg_rating'], 
+            df_filtered['gender_discipline']
+        )
+        reject = discipline_results.reject  # Boolean array of rejected hypotheses
+
+        
+        # Filter discipline results for same-discipline comparisons
+        discipline_comparisons = []
+        for i, comp in enumerate(discipline_results.summary().data[1:]):
+            if comp[0].split(' - ')[1] == comp[1].split(' - ')[1]:
+                discipline_comparisons.append({
+                    'group1': comp[0],
+                    'group2': comp[1],
+                    'meandiff': float(comp[2]),
+                    'lower': float(comp[3]),
+                    'upper': float(comp[4]),
+                    'p_adj': float(comp[5]),
+                    'reject': comp[6] == 'True'
+                })
+        
+        # Perform Tukey's HSD test for sub-disciplines
+        sub_df = df.dropna(subset=['sub_discipline'])
+        sub_discipline_comparisons = []
+        
+        if not sub_df.empty:
+            sub_discipline_groups = sub_df.groupby('gender_sub_discipline')['avg_rating'].agg(['count', 'mean'])
+            valid_sub_disciplines = sub_discipline_groups[sub_discipline_groups['count'] >= 2].index
+            
+            sub_df_filtered = sub_df[sub_df['gender_sub_discipline'].isin(valid_sub_disciplines)]
+            
+            if len(sub_df_filtered) >= 2:
+                sub_discipline_results = pairwise_tukeyhsd(
+                    sub_df_filtered['avg_rating'], 
+                    sub_df_filtered['gender_sub_discipline']
+                )
+                
+                # Filter sub-discipline results
+                for i, comp in enumerate(sub_discipline_results.summary().data[1:]):
+                    if comp[0].split(' - ')[1] == comp[1].split(' - ')[1]:
+                        sub_discipline_comparisons.append({
+                            'group1': comp[0],
+                            'group2': comp[1],
+                            'meandiff': float(comp[2]),
+                            'lower': float(comp[3]),
+                            'upper': float(comp[4]),
+                            'p_adj': float(comp[5]),
+                            'reject': comp[6] == 'True'
+                        })
+        
+        return {
+            'discipline_comparisons': discipline_comparisons,
+            'sub_discipline_comparisons': sub_discipline_comparisons
+        }
+        
+    except Exception as e:
+        import traceback
+        print(f"Error in calculate_tukey_hsd: {str(e)}")
+        print(traceback.format_exc())
+        raise
+
+def calculate_gender_discipline_heatmap():
+    """Calculate average ratings by gender and discipline for heatmap visualization"""
+    from django.db.models import Avg
+    
+    heatmap_data = Rating.objects.select_related('professor').values(
+        'professor__gender', 
+        'professor__discipline'
+    ).annotate(
+        avg_rating=Avg('avg_rating')
+    ).filter(
+        professor__gender__isnull=False,
+        professor__discipline__isnull=False
+    )
+    
+    # Transform into the format needed for the heatmap
+    result = []
+    for entry in heatmap_data:
+        result.append({
+            'gender': entry['professor__gender'],
+            'discipline': entry['professor__discipline'],
+            'avg_rating': round(float(entry['avg_rating']), 2) if entry['avg_rating'] else 0
+        })
+    
+    return result

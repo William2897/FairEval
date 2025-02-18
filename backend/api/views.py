@@ -20,7 +20,7 @@ from .serializers import (
 from .filters import RatingFilter
 from .utils import (
     calculate_professor_metrics, analyze_discipline_ratings,
-    analyze_discipline_gender_distribution, perform_discipline_tukey_hsd,
+    analyze_discipline_gender_distribution, calculate_tukey_hsd, calculate_gender_discipline_heatmap,
     calculate_gender_distribution, get_sentiment_summary
 )
 
@@ -173,12 +173,10 @@ class ProfessorViewSet(viewsets.ModelViewSet):
         """Get statistical analysis of ratings by discipline"""
         discipline_stats = analyze_discipline_ratings()
         gender_stats = analyze_discipline_gender_distribution()
-        tukey_results = perform_discipline_tukey_hsd()
         
         return Response({
             'discipline_ratings': discipline_stats,
             'gender_distribution': gender_stats,
-            'statistical_tests': tukey_results
         })
 
     @action(detail=False, methods=['get'])
@@ -540,6 +538,28 @@ class ProfessorViewSet(viewsets.ModelViewSet):
             return Response({
                 "error": f"Error fetching word cloud data: {str(e)}",
                 "traceback": traceback.format_exc()
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=False, methods=['get'])
+    def tukey_analysis(self, request):
+        """Get Tukey's HSD test results for gender comparisons across disciplines"""
+        try:
+            results = calculate_tukey_hsd()
+            return Response(results)
+        except Exception as e:
+            return Response({
+                "error": f"Error calculating Tukey HSD analysis: {str(e)}"
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=False, methods=['get'])
+    def gender_discipline_heatmap(self, request):
+        """Get average ratings by gender and discipline for heatmap visualization"""
+        try:
+            data = calculate_gender_discipline_heatmap()
+            return Response(data)
+        except Exception as e:
+            return Response({
+                "error": f"Error calculating gender-discipline heatmap: {str(e)}"
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class RatingViewSet(viewsets.ModelViewSet):

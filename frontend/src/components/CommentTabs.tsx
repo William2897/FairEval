@@ -72,10 +72,6 @@ export const CommentTabs: React.FC<CommentTabsProps> = ({ comments, className = 
                   <span className="text-gray-500">
                     {new Date(comment.created_at).toLocaleDateString()}
                   </span>
-                  <div className="flex items-center gap-2">
-                    <SmileIcon size={16} className="text-green-600" />
-                    <span className="font-medium text-green-600">Positive</span>
-                  </div>
                 </div>
               </div>
             ))}
@@ -93,10 +89,6 @@ export const CommentTabs: React.FC<CommentTabsProps> = ({ comments, className = 
                   <span className="text-gray-500">
                     {new Date(comment.created_at).toLocaleDateString()}
                   </span>
-                  <div className="flex items-center gap-2">
-                    <FrownIcon size={16} className="text-red-600" />
-                    <span className="font-medium text-red-600">Negative</span>
-                  </div>
                 </div>
               </div>
             ))}

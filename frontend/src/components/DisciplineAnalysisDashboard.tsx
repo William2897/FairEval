@@ -14,6 +14,7 @@ import {
 } from 'recharts';
 import { Loader2 } from 'lucide-react';
 import { GenderAnalysisDashboard } from './GenderAnalysisDashboard';
+import { StatisticsDashboard } from './StatisticsDashboard';
 
 interface DisciplineStats {
   discipline: string;
@@ -31,32 +32,10 @@ interface GenderStats {
   total_ratings: number;
 }
 
-interface TukeyResults {
-  discipline: string;
-  anova: {
-    f_stat: number;
-    p_value: number;
-  };
-  tukey: Array<{
-    group1: string;
-    group2: string;
-    meandiff: number;
-    lower: number;
-    upper: number;
-    reject: boolean;
-  }> | null;
-  summary: Array<{
-    discipline: string;
-    gender: string;
-    mean: number;
-    count: number;
-  }>;
-}
 
 interface DisciplineData {
   discipline_ratings: DisciplineStats[];
   gender_distribution: GenderStats[];
-  statistical_tests: TukeyResults[];
 }
 
 // Remove unused interface TreemapDataPoint
@@ -160,24 +139,24 @@ export const DisciplineAnalysisDashboard: React.FC = () => {
       {/* Tab Navigation */}
       <div className="border-b border-gray-200">
         <nav className="flex space-x-4" aria-label="Tabs">
-          {[
-            { id: 'ratings', label: 'Rating Distribution' },
-            { id: 'treemap', label: 'Treemap Analysis' },
-            { id: 'gender', label: 'Gender Analysis' },
-            { id: 'stats', label: 'Statistical Tests' },
-          ].map((tab) => (
+            {[
+            { id: 'ratings', label: 'Rating' },
+            { id: 'treemap', label: 'Treemap' },
+            { id: 'gender', label: 'Gender' },
+            { id: 'stats', label: 'Statistics' },
+            ].map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id as any)}
               className={`py-2 px-4 text-sm font-medium border-b-2 ${
-                activeTab === tab.id
-                  ? 'border-indigo-500 text-indigo-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              activeTab === tab.id
+                ? 'border-indigo-500 text-indigo-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
               }`}
             >
               {tab.label}
             </button>
-          ))}
+            ))}
         </nav>
       </div>
 
@@ -364,65 +343,8 @@ export const DisciplineAnalysisDashboard: React.FC = () => {
       )}
 
       {activeTab === 'stats' && (
-        <div className="bg-white rounded-lg shadow p-6">
-          <h2 className="text-xl font-semibold text-gray-900 mb-6">
-            Statistical Analysis Results
-          </h2>
-          <div className="space-y-6">
-            {data.statistical_tests.map((test) => (
-              <div key={test.discipline} className="border-b pb-4">
-                <h3 className="font-medium text-lg mb-2">{test.discipline}</h3>
-                <p className="text-sm text-gray-600 mb-2">
-                  ANOVA Results: F={test.anova.f_stat.toFixed(2)}, 
-                  p={test.anova.p_value < 0.001 ? '< 0.001' : test.anova.p_value.toFixed(3)}
-                </p>
-                {test.tukey && (
-                  <div className="mt-2">
-                    <h4 className="font-medium mb-1">Tukey's HSD Test Results:</h4>
-                    <div className="overflow-x-auto">
-                      <table className="min-w-full text-sm">
-                        <thead>
-                          <tr className="bg-gray-50">
-                            <th className="px-4 py-2">Comparison</th>
-                            <th className="px-4 py-2">Mean Diff</th>
-                            <th className="px-4 py-2">CI Lower</th>
-                            <th className="px-4 py-2">CI Upper</th>
-                            <th className="px-4 py-2">Significant</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {test.tukey.map((result, idx) => (
-                            <tr key={idx} className="border-t">
-                              <td className="px-4 py-2">
-                                {result.group1} vs {result.group2}
-                              </td>
-                              <td className="px-4 py-2">
-                                {result.meandiff.toFixed(2)}
-                              </td>
-                              <td className="px-4 py-2">
-                                {result.lower.toFixed(2)}
-                              </td>
-                              <td className="px-4 py-2">
-                                {result.upper.toFixed(2)}
-                              </td>
-                              <td className="px-4 py-2">
-                                <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                                  result.reject 
-                                    ? 'bg-green-100 text-green-800'
-                                    : 'bg-gray-100 text-gray-800'
-                                }`}>{result.reject ? 'Yes' : 'No'}
-                                </span>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
+        <div>
+          <StatisticsDashboard />
         </div>
       )}
     </div>

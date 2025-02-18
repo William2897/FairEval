@@ -39,7 +39,7 @@ function Settings() {
 
       <div className="bg-white rounded-lg shadow p-6">
         <h2 className="text-lg font-medium text-gray-900 mb-4">Preferences</h2>
-        <p className="text-gray-600">Preference settings will be added in a future update.</p>
+        <p className="text-gray-600">Added in a future update.</p>
       </div>
     </div>
   );
