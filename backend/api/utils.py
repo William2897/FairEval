@@ -83,7 +83,6 @@ def get_sentiment_summary(professor_id):
                 'female_freq': female_freq,
                 'bias': bias
             })
-        
         return sorted(result, key=lambda x: max(x['male_freq'], x['female_freq']), reverse=True)[:20]
     
     # Calculate term frequencies for all sentiments
@@ -105,13 +104,8 @@ def get_sentiment_summary(professor_id):
     summary = {
         'total_comments': sentiments.count(),
         'sentiment_breakdown': {
-            'positive': sentiments.filter(sentiment__gt=0).count(),
-            'negative': sentiments.filter(sentiment__lt=0).count()
-        },
-        'vader_scores': {
-            'compound': sentiments.aggregate(Avg('vader_compound'))['vader_compound__avg'] or 0,
-            'positive': sentiments.aggregate(Avg('vader_positive'))['vader_positive__avg'] or 0,
-            'negative': sentiments.aggregate(Avg('vader_negative'))['vader_negative__avg'] or 0
+            'positive': sentiments.filter(sentiment=1).count(),
+            'negative': sentiments.filter(sentiment=0).count()
         },
         'top_words': {
             'lexicon': {
@@ -139,8 +133,7 @@ def get_sentiment_summary(professor_id):
         },
         'recent_sentiments': list(
             sentiments.order_by('-created_at')[:5]
-            .values('comment', 'processed_comment', 'sentiment', 'created_at',
-                   'vader_compound')
+            .values('comment', 'processed_comment', 'sentiment', 'created_at')
         )
     }
     

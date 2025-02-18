@@ -7,7 +7,6 @@ interface Comment {
   processed_comment: string;
   sentiment: number;
   created_at: string;
-  vader_compound?: number;
 }
 
 interface CommentTabsProps {
@@ -20,8 +19,8 @@ function classNames(...classes: string[]) {
 }
 
 export const CommentTabs: React.FC<CommentTabsProps> = ({ comments, className = '' }) => {
-  const positiveComments = comments.filter(c => c.sentiment > 0);
-  const negativeComments = comments.filter(c => c.sentiment < 0);
+  const positiveComments = comments.filter(c => c.sentiment === 1);
+  const negativeComments = comments.filter(c => c.sentiment === 0);
 
   return (
     <div className={`${className} bg-white rounded-lg shadow-md p-6`}>
@@ -75,9 +74,7 @@ export const CommentTabs: React.FC<CommentTabsProps> = ({ comments, className = 
                   </span>
                   <div className="flex items-center gap-2">
                     <SmileIcon size={16} className="text-green-600" />
-                    <span className="font-medium text-green-600">
-                      Score: {comment.sentiment.toFixed(2)}
-                    </span>
+                    <span className="font-medium text-green-600">Positive</span>
                   </div>
                 </div>
               </div>
@@ -98,9 +95,7 @@ export const CommentTabs: React.FC<CommentTabsProps> = ({ comments, className = 
                   </span>
                   <div className="flex items-center gap-2">
                     <FrownIcon size={16} className="text-red-600" />
-                    <span className="font-medium text-red-600">
-                      Score: {comment.sentiment.toFixed(2)}
-                    </span>
+                    <span className="font-medium text-red-600">Negative</span>
                   </div>
                 </div>
               </div>

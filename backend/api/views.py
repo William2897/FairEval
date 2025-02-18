@@ -11,6 +11,7 @@ from django.db.models.functions import Cast
 from django.contrib.auth import login, logout, get_user_model, authenticate
 from django.shortcuts import get_object_or_404
 from django.http import Http404
+from django.core.paginator import Paginator
 from .models import Professor, Rating, Sentiment, UserRole
 from .serializers import (
     ProfessorSerializer, RatingSerializer,
@@ -330,18 +331,35 @@ class ProfessorViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['get'])
     def sentiment_summary(self, request, professor_id=None):
-        """Get summarized sentiment statistics for a professor"""
+        """Get summarized sentiment statistics for a professor with paginated comments"""
         try:
             professor = self.get_object()
-            summary = get_sentiment_summary(professor.professor_id)
-            if not summary['total_comments']:
-                return Response({
-                    "error": "No sentiment summary available for this professor"
-                }, status=status.HTTP_404_NOT_FOUND)
+            page = int(request.query_params.get('page', 1))
+            page_size = int(request.query_params.get('page_size', 10))
+
+            # Get all sentiments for this professor
+            sentiments = Sentiment.objects.filter(professor_id=professor.professor_id)
+            
+            # Get total counts
+            total_comments = sentiments.count()
+            positive_count = sentiments.filter(sentiment=1).count()
+            negative_count = sentiments.filter(sentiment=0).count()
+
+            # Paginate the sentiments
+            paginator = Paginator(sentiments.order_by('-created_at'), page_size)
+            current_page = paginator.get_page(page)
+
             return Response({
-                'total_comments': summary['total_comments'],
-                'sentiment_breakdown': summary['sentiment_breakdown'],
-                'recent_sentiments': summary['recent_sentiments']
+                'total_comments': total_comments,
+                'sentiment_breakdown': {
+                    'positive': positive_count,
+                    'negative': negative_count
+                },
+                'comments': list(
+                    current_page.object_list
+                    .values('comment', 'processed_comment', 'sentiment', 'created_at')
+                ),
+                'total_pages': paginator.num_pages
             })
         except Http404:
             return Response({

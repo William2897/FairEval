@@ -1,11 +1,10 @@
 import { useAuth } from '../contexts/AuthContext';
-import ProfessorSentimentDashboard from '../components/ProfessorSentimentDashboard';
 import { CommentSummaryDisplay } from '../components/CommentSummaryDisplay';
 import { WordCloudVisualization } from '../components/WordCloudVisualization';
 import { GenderSentimentVisualization } from '../components/GenderSentimentVisualization';
 import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
-import { Tab, TabPanel, TabPanels } from '@headlessui/react';
+import { Tab, TabPanel, TabPanels, TabGroup, TabList } from '@headlessui/react';
 
 interface WordCloudData {
   vader: {
@@ -98,10 +97,6 @@ function SentimentAnalysis() {
         {user?.role?.role === 'ACADEMIC' && (
           <>
             <div>
-              <h2 className="text-xl font-bold text-gray-900 mb-4">Overall Sentiment Analysis</h2>
-              <ProfessorSentimentDashboard professorId={user.username} />
-            </div>
-            <div>
               <h2 className="text-xl font-bold text-gray-900 mb-4">Comment Analysis</h2>
               <CommentSummaryDisplay professorId={user.username} />
             </div>
@@ -110,8 +105,8 @@ function SentimentAnalysis() {
 
         {user?.role?.role === 'ADMIN' && wordCloudData && genderData?.gender_analysis && (
           <div className="space-y-8">
-            <Tab.Group>
-              <Tab.List className="flex space-x-1 rounded-xl bg-indigo-100 p-1 mb-6">
+            <TabGroup>
+              <TabList className="flex space-x-1 rounded-xl bg-indigo-100 p-1 mb-6">
                 <Tab
                   className={({ selected }) =>
                     `w-full rounded-lg py-2.5 text-sm font-medium leading-5 ${
@@ -134,7 +129,7 @@ function SentimentAnalysis() {
                 >
                   Gender-Based Analysis
                 </Tab>
-              </Tab.List>
+              </TabList>
 
               <TabPanels>
                 <TabPanel>
@@ -205,7 +200,7 @@ function SentimentAnalysis() {
                   </div>
                 </TabPanel>
               </TabPanels>
-            </Tab.Group>
+            </TabGroup>
           </div>
         )}
       </div>
