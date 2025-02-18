@@ -1,0 +1,33 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*.so
+.Python
+
+# Development
+.git/
+.gitignore
+.env*
+.vscode/
+.idea/
+*.log
+
+# Test files
+tests/
+test_*.py
+*_test.py
+
+# Data files
+*.csv
+*.xlsx
+*.json
+
+# Cache and temp
+.pytest_cache/
+.coverage
+htmlcov/
+*.egg-info/
+
+# Static & media
+staticfiles/
+media/

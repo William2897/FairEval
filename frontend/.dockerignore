@@ -1,0 +1,26 @@
+# Development files
+node_modules/
+*.log
+.git/
+.gitignore
+README.md
+.env*
+.vscode/
+.idea/
+*.test.*
+coverage/
+
+# Build artifacts
+dist/
+build/
+*.local
+
+# Cache
+.cache/
+.npm/
+.eslintcache
+
+# Test files
+__tests__/
+test/
+tests/
