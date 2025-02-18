@@ -23,10 +23,8 @@ function Dashboard() {
     queryFn: async () => {
       if (user?.role?.role === 'ACADEMIC') {
         const metrics = await axios.get(`/api/professors/${user.username}/metrics/`);
-        const ratingStats = await axios.get(`/api/ratings/?professor=${user.username}&page_size=100`);
-        
         return {
-          evaluationCount: ratingStats.data.count,
+          evaluationCount: metrics.data.total_ratings,
           metrics: metrics.data
         };
       } else {
