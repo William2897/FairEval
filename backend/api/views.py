@@ -6,12 +6,15 @@ from rest_framework import pagination  # added import for pagination
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
-from django.db.models import Avg, Count, Case, When
+from django.db.models import Avg, Count, Case, When, F, Value, CharField, Q
+from django.db.models.expressions import RawSQL
 from django.db.models.functions import Cast
 from django.contrib.auth import login, logout, get_user_model, authenticate
 from django.shortcuts import get_object_or_404
 from django.http import Http404
 from django.core.paginator import Paginator
+from django.core.cache import cache  # Import Django's cache system
+from django.db import connection  # Add connection import
 from .models import Professor, Rating, Sentiment, UserRole
 from .serializers import (
     ProfessorSerializer, RatingSerializer,
@@ -25,6 +28,11 @@ from .utils import (
 )
 
 User = get_user_model()
+
+# Cache timeouts (in seconds)
+CACHE_TIMEOUT_SHORT = 60 * 5  # 5 minutes
+CACHE_TIMEOUT_MEDIUM = 60 * 30  # 30 minutes
+CACHE_TIMEOUT_LONG = 60 * 60 * 12  # 12 hours
 
 class AuthViewSet(viewsets.GenericViewSet):  # Changed from ViewSet to GenericViewSet
     permission_classes = [permissions.AllowAny]
@@ -171,18 +179,41 @@ class ProfessorViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'])
     def discipline_stats(self, request):
         """Get statistical analysis of ratings by discipline"""
+        # Check cache first
+        cache_key = 'discipline_stats'
+        cached_data = cache.get(cache_key)
+        
+        if cached_data:
+            return Response(cached_data)
+            
         discipline_stats = analyze_discipline_ratings()
         gender_stats = analyze_discipline_gender_distribution()
         
-        return Response({
+        data = {
             'discipline_ratings': discipline_stats,
             'gender_distribution': gender_stats,
-        })
+        }
+        
+        # Cache the results
+        cache.set(cache_key, data, CACHE_TIMEOUT_MEDIUM)
+        
+        return Response(data)
 
     @action(detail=False, methods=['get'])
     def gender_distribution(self, request):
         """Get gender distribution analysis for top/bottom rated disciplines"""
+        # Check cache first
+        cache_key = 'gender_distribution'
+        cached_data = cache.get(cache_key)
+        
+        if cached_data:
+            return Response(cached_data)
+            
         distribution_stats = calculate_gender_distribution()
+        
+        # Cache the results
+        cache.set(cache_key, distribution_stats, CACHE_TIMEOUT_MEDIUM)
+        
         return Response(distribution_stats)
 
     @action(detail=True, methods=['get'])
@@ -235,37 +266,52 @@ class ProfessorViewSet(viewsets.ModelViewSet):
 
     def _get_institution_gender_terms(self, positive=True, sentiment_type='vader'):
         """Helper method to get institution-wide gender-based term analysis"""
-        from django.db.models import F
-        from collections import Counter
-        from itertools import chain
-
-        # Get all sentiments with gender annotation
-        sentiments = Sentiment.objects.all().annotate(
-            gender=F('professor__gender')
-        ).filter(gender__in=['Male', 'Female'])
+        # Create a cache key based on the parameters
+        cache_key = f'gender_terms_{sentiment_type}_{"positive" if positive else "negative"}'
+        cached_data = cache.get(cache_key)
         
-        # Split by gender
-        male_sentiments = sentiments.filter(gender='Male')
-        female_sentiments = sentiments.filter(gender='Female')
-        
+        if cached_data:
+            return cached_data
+            
         # Determine which field to analyze
         if sentiment_type == 'vader':
             field = 'positive_terms_vader' if positive else 'negative_terms_vader'
         else:
             field = 'positive_terms_lexicon' if positive else 'negative_terms_lexicon'
         
-        # Get term frequencies for each gender
-        def get_term_frequencies(queryset):
-            terms = chain.from_iterable(
-                s[field] for s in queryset.values(field) 
-                if s[field]
-            )
-            return Counter(terms)
+        # Use standard PostgreSQL query with jsonb_array_elements_text
+        with connection.cursor() as cursor:
+            # Query for male professors
+            cursor.execute(f"""
+                SELECT t.term, COUNT(*) as count
+                FROM api_sentiment s
+                JOIN api_professor p ON CAST(s.professor_id AS VARCHAR) = p.professor_id
+                CROSS JOIN LATERAL jsonb_array_elements_text(s.{field}) AS t(term)
+                WHERE t.term IS NOT NULL
+                AND p.gender = 'Male'
+                GROUP BY t.term
+                ORDER BY count DESC
+            """)
+            male_terms = cursor.fetchall()
+            
+            # Query for female professors
+            cursor.execute(f"""
+                SELECT t.term, COUNT(*) as count
+                FROM api_sentiment s
+                JOIN api_professor p ON CAST(s.professor_id AS VARCHAR) = p.professor_id
+                CROSS JOIN LATERAL jsonb_array_elements_text(s.{field}) AS t(term)
+                WHERE t.term IS NOT NULL
+                AND p.gender = 'Female'
+                GROUP BY t.term
+                ORDER BY count DESC
+            """)
+            female_terms = cursor.fetchall()
         
-        male_counter = get_term_frequencies(male_sentiments)
-        female_counter = get_term_frequencies(female_sentiments)
+        # Convert results to dictionaries
+        male_counter = {term: count for term, count in male_terms}
+        female_counter = {term: count for term, count in female_terms}
         
-        # Calculate totals for relative frequencies
+        # Calculate totals
         male_total = sum(male_counter.values()) or 1
         female_total = sum(female_counter.values()) or 1
         
@@ -277,8 +323,8 @@ class ProfessorViewSet(viewsets.ModelViewSet):
         bias_threshold = 1.1
         
         for term in all_terms:
-            male_freq = male_counter[term]
-            female_freq = female_counter[term]
+            male_freq = male_counter.get(term, 0)
+            female_freq = female_counter.get(term, 0)
             
             # Calculate relative frequencies
             male_rel_freq = male_freq / male_total
@@ -294,7 +340,7 @@ class ProfessorViewSet(viewsets.ModelViewSet):
             elif female_rel_freq > bias_threshold * male_rel_freq:
                 bias = 'Female'
             else:
-                continue  # Skip neutral terms
+                bias = 'Neutral'
             
             terms_data.append({
                 'term': term,
@@ -319,8 +365,13 @@ class ProfessorViewSet(viewsets.ModelViewSet):
             reverse=True
         )[:10]
         
-        # Combine the results
-        return male_biased + female_biased
+        # Combine results
+        results = male_biased + female_biased
+        
+        # Cache results
+        cache.set(cache_key, results, CACHE_TIMEOUT_LONG)
+        
+        return results
 
     @action(detail=True, methods=['get'], url_path='sentiment-analysis')
     def sentiment_analysis_kebab(self, request, professor_id=None):
@@ -331,34 +382,33 @@ class ProfessorViewSet(viewsets.ModelViewSet):
     def sentiment_summary(self, request, professor_id=None):
         """Get summarized sentiment statistics for a professor with paginated comments"""
         try:
-            professor = self.get_object()
-            page = int(request.query_params.get('page', 1))
-            page_size = int(request.query_params.get('page_size', 10))
-
-            # Get all sentiments for this professor
-            sentiments = Sentiment.objects.filter(professor_id=professor.professor_id)
-            
-            # Get total counts
-            total_comments = sentiments.count()
-            positive_count = sentiments.filter(sentiment=1).count()
-            negative_count = sentiments.filter(sentiment=0).count()
-
-            # Paginate the sentiments
-            paginator = Paginator(sentiments.order_by('-created_at'), page_size)
-            current_page = paginator.get_page(page)
-
-            return Response({
-                'total_comments': total_comments,
-                'sentiment_breakdown': {
-                    'positive': positive_count,
-                    'negative': negative_count
-                },
-                'comments': list(
-                    current_page.object_list
-                    .values('comment', 'processed_comment', 'sentiment', 'created_at')
-                ),
-                'total_pages': paginator.num_pages
-            })
+            # For institution-wide data, use caching
+            if professor_id == 'institution':
+                # Check if user is admin for institution-wide data
+                if not request.user.role.role == 'ADMIN':
+                    return Response({"error": "You don't have permission to access this data"}, 
+                                    status=status.HTTP_403_FORBIDDEN)
+                
+                # Check cache for institution data
+                page = request.query_params.get('page', 1)
+                cache_key = f'institution_sentiment_summary_page_{page}'
+                cached_data = cache.get(cache_key)
+                
+                if cached_data:
+                    return Response(cached_data)
+                
+                # Process institution-wide data
+                sentiment_data = get_sentiment_summary(institution=True)
+                
+                # Cache the results
+                cache.set(cache_key, sentiment_data, CACHE_TIMEOUT_SHORT)
+                
+                return Response(sentiment_data)
+            else:
+                professor = self.get_object()
+                sentiment_data = get_sentiment_summary(professor_id=professor.professor_id)
+                return Response(sentiment_data)
+                
         except Http404:
             return Response({
                 "error": f"Professor with ID {professor_id} not found"
@@ -474,63 +524,78 @@ class ProfessorViewSet(viewsets.ModelViewSet):
             }, status=status.HTTP_403_FORBIDDEN)
 
         try:
-            if professor_id == 'institution':
-                sentiments = Sentiment.objects.all()
-            else:
-                professor = self.get_object()
-                sentiments = Sentiment.objects.filter(professor_id=professor.professor_id)
-            
-            if not sentiments.exists():
-                return Response({
-                    "error": "No sentiment data available"
-                }, status=status.HTTP_404_NOT_FOUND)
-
-            # Initialize Counters for both VADER and Lexicon terms
-            vader_pos_terms = Counter()
-            vader_neg_terms = Counter()
-            lexicon_pos_terms = Counter()
-            lexicon_neg_terms = Counter()
-
-            # Process terms from each sentiment
-            for sentiment in sentiments:
-                # Update VADER term counters
-                if sentiment.positive_terms_vader:
-                    vader_pos_terms.update(sentiment.positive_terms_vader)
-                if sentiment.negative_terms_vader:
-                    vader_neg_terms.update(sentiment.negative_terms_vader)
+            # Use raw SQL to handle JSONB arrays properly
+            with connection.cursor() as cursor:
+                # Query for VADER positive terms
+                cursor.execute("""
+                    SELECT t.term, COUNT(*) as count
+                    FROM api_sentiment s
+                    CROSS JOIN LATERAL jsonb_array_elements_text(s.positive_terms_vader) AS t(term)
+                    WHERE t.term IS NOT NULL
+                    GROUP BY t.term
+                    ORDER BY count DESC
+                    LIMIT 50
+                """)
+                vader_pos_terms = cursor.fetchall()
                 
-                # Update Lexicon term counters
-                if sentiment.positive_terms_lexicon:
-                    lexicon_pos_terms.update(sentiment.positive_terms_lexicon)
-                if sentiment.negative_terms_lexicon:
-                    lexicon_neg_terms.update(sentiment.negative_terms_lexicon)
-
+                # Query for VADER negative terms
+                cursor.execute("""
+                    SELECT t.term, COUNT(*) as count
+                    FROM api_sentiment s
+                    CROSS JOIN LATERAL jsonb_array_elements_text(s.negative_terms_vader) AS t(term)
+                    WHERE t.term IS NOT NULL
+                    GROUP BY t.term
+                    ORDER BY count DESC
+                    LIMIT 50
+                """)
+                vader_neg_terms = cursor.fetchall()
+                
+                # Query for Lexicon positive terms
+                cursor.execute("""
+                    SELECT t.term, COUNT(*) as count
+                    FROM api_sentiment s
+                    CROSS JOIN LATERAL jsonb_array_elements_text(s.positive_terms_lexicon) AS t(term)
+                    WHERE t.term IS NOT NULL
+                    GROUP BY t.term
+                    ORDER BY count DESC
+                    LIMIT 50
+                """)
+                lexicon_pos_terms = cursor.fetchall()
+                
+                # Query for Lexicon negative terms
+                cursor.execute("""
+                    SELECT t.term, COUNT(*) as count
+                    FROM api_sentiment s
+                    CROSS JOIN LATERAL jsonb_array_elements_text(s.negative_terms_lexicon) AS t(term)
+                    WHERE t.term IS NOT NULL
+                    GROUP BY t.term
+                    ORDER BY count DESC
+                    LIMIT 50
+                """)
+                lexicon_neg_terms = cursor.fetchall()
+                
             # Create response with filtered terms
             response_data = {
                 'vader': {
                     'positive': [{'word': word, 'count': count} 
-                               for word, count in vader_pos_terms.most_common(50) 
+                               for word, count in vader_pos_terms 
                                if word and word.strip()],
                     'negative': [{'word': word, 'count': count} 
-                               for word, count in vader_neg_terms.most_common(50) 
+                               for word, count in vader_neg_terms 
                                if word and word.strip()]
                 },
                 'lexicon': {
                     'positive': [{'word': word, 'count': count} 
-                               for word, count in lexicon_pos_terms.most_common(50) 
+                               for word, count in lexicon_pos_terms 
                                if word and word.strip()],
                     'negative': [{'word': word, 'count': count} 
-                               for word, count in lexicon_neg_terms.most_common(50) 
+                               for word, count in lexicon_neg_terms 
                                if word and word.strip()]
                 }
             }
             
             return Response(response_data)
             
-        except Http404:
-            return Response({
-                "error": f"Professor with ID {professor_id} not found"
-            }, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
             import traceback
             print(f"Error in word_clouds endpoint: {str(e)}")
@@ -544,23 +609,214 @@ class ProfessorViewSet(viewsets.ModelViewSet):
     def tukey_analysis(self, request):
         """Get Tukey's HSD test results for gender comparisons across disciplines"""
         try:
-            results = calculate_tukey_hsd()
-            return Response(results)
+            # Check cache first
+            cache_key = 'tukey_analysis'
+            cached_data = cache.get(cache_key)
+            
+            if cached_data:
+                return Response(cached_data)
+                
+            tukey_results = calculate_tukey_hsd()
+            
+            # Cache the results
+            cache.set(cache_key, tukey_results, CACHE_TIMEOUT_LONG)
+            
+            return Response(tukey_results)
         except Exception as e:
-            return Response({
-                "error": f"Error calculating Tukey HSD analysis: {str(e)}"
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     @action(detail=False, methods=['get'])
     def gender_discipline_heatmap(self, request):
         """Get average ratings by gender and discipline for heatmap visualization"""
+        # Check cache first
+        cache_key = 'gender_discipline_heatmap'
+        cached_data = cache.get(cache_key)
+        
+        if cached_data:
+            return Response(cached_data)
+            
+        heatmap_data = calculate_gender_discipline_heatmap()
+        
+        # Cache the results
+        cache.set(cache_key, heatmap_data, CACHE_TIMEOUT_MEDIUM)
+        
+        return Response(heatmap_data)
+
+    @action(detail=False, methods=['get'])
+    def gender_term_analysis(self, request):
+        """Get gender-based term analysis at institutional level"""
+        sentiment_type = request.query_params.get('sentiment_type', 'vader') 
+        term_type = request.query_params.get('term_type', 'positive')
+        
+        # Create a cache key
+        cache_key = f'gender_term_{sentiment_type}_{term_type}'
+        cached_data = cache.get(cache_key)
+        
+        if cached_data:
+            return Response(cached_data)
+        
         try:
-            data = calculate_gender_discipline_heatmap()
-            return Response(data)
+            # Determine which field to analyze
+            if sentiment_type == 'vader':
+                field = 'positive_terms_vader' if term_type == 'positive' else 'negative_terms_vader'
+            else:
+                field = 'positive_terms_lexicon' if term_type == 'positive' else 'negative_terms_lexicon'
+            
+            # Use raw SQL for proper JSONB array handling
+            with connection.cursor() as cursor:
+                # Get male terms
+                cursor.execute(f"""
+                    SELECT t.term, COUNT(*) as count
+                    FROM api_sentiment s
+                    JOIN api_professor p ON CAST(s.professor_id AS VARCHAR) = p.professor_id
+                    CROSS JOIN LATERAL jsonb_array_elements_text(s.{field}) AS t(term)
+                    WHERE t.term IS NOT NULL
+                    AND p.gender = 'Male'
+                    GROUP BY t.term
+                    ORDER BY count DESC
+                """)
+                male_terms = cursor.fetchall()
+                
+                # Get female terms
+                cursor.execute(f"""
+                    SELECT t.term, COUNT(*) as count
+                    FROM api_sentiment s
+                    JOIN api_professor p ON CAST(s.professor_id AS VARCHAR) = p.professor_id
+                    CROSS JOIN LATERAL jsonb_array_elements_text(s.{field}) AS t(term)
+                    WHERE t.term IS NOT NULL
+                    AND p.gender = 'Female'
+                    GROUP BY t.term
+                    ORDER BY count DESC
+                """)
+                female_terms = cursor.fetchall()
+            
+            # Convert to dictionaries for easier manipulation
+            male_dict = {term: count for term, count in male_terms}
+            female_dict = {term: count for term, count in female_terms}
+            
+            # Calculate totals
+            male_total = sum(male_dict.values()) or 1
+            female_total = sum(female_dict.values()) or 1
+            
+            # Calculate bias and relative frequencies
+            all_terms = set(male_dict.keys()) | set(female_dict.keys())
+            results = []
+            
+            for term in all_terms:
+                male_freq = male_dict.get(term, 0)
+                female_freq = female_dict.get(term, 0)
+                
+                # Skip rare terms
+                if male_freq + female_freq < 3:
+                    continue
+                
+                # Calculate relative frequencies
+                male_rel_freq = male_freq / male_total
+                female_rel_freq = female_freq / female_total
+                
+                # Determine bias
+                bias = 'neutral'
+                if male_rel_freq > 1.5 * female_rel_freq:
+                    bias = 'male'
+                elif female_rel_freq > 1.5 * male_rel_freq:
+                    bias = 'female'
+                
+                results.append({
+                    'term': term,
+                    'male_count': male_freq,
+                    'female_count': female_freq,
+                    'male_relative': round(male_rel_freq, 4),
+                    'female_relative': round(female_rel_freq, 4),
+                    'total': male_freq + female_freq,
+                    'bias': bias
+                })
+            
+            # Sort by total frequency
+            results.sort(key=lambda x: x['total'], reverse=True)
+            
+            response_data = {
+                'results': results[:100],  # Limit to top 100 terms
+                'totals': {
+                    'male_terms': male_total,
+                    'female_terms': female_total
+                },
+                'sentiment_type': sentiment_type,
+                'term_type': term_type
+            }
+            
+            # Cache the results
+            cache.set(cache_key, response_data, CACHE_TIMEOUT_MEDIUM)
+            
+            return Response(response_data)
+            
         except Exception as e:
-            return Response({
-                "error": f"Error calculating gender-discipline heatmap: {str(e)}"
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=False, methods=['get'])
+    def gender_ratings_comparison(self, request):
+        """Compare ratings across genders at institutional level"""
+        # Check cache first
+        cache_key = 'gender_ratings_comparison'
+        cached_data = cache.get(cache_key)
+        
+        if cached_data:
+            return Response(cached_data)
+        
+        # Use database aggregation to get gender rating statistics
+        gender_stats = Rating.objects.select_related('professor').values(
+            'professor__gender'
+        ).annotate(
+            avg_rating=Avg('avg_rating'),
+            avg_clarity=Avg('clarity_rating'),
+            avg_helpfulness=Avg('helpful_rating'),
+            avg_difficulty=Avg('difficulty_rating'),
+            count=Count('id')
+        ).filter(
+            professor__gender__in=['Male', 'Female']
+        )
+        
+        # Format response
+        stats = {item['professor__gender']: {
+            'avg_rating': round(item['avg_rating'], 2),
+            'avg_clarity': round(item['avg_clarity'], 2),
+            'avg_helpfulness': round(item['avg_helpfulness'], 2),
+            'avg_difficulty': round(item['avg_difficulty'], 2),
+            'count': item['count']
+        } for item in gender_stats}
+        
+        # Get discipline-level breakdown
+        discipline_gender_stats = Rating.objects.select_related('professor').values(
+            'professor__gender', 'professor__discipline'
+        ).annotate(
+            avg_rating=Avg('avg_rating'),
+            count=Count('id')
+        ).filter(
+            professor__gender__in=['Male', 'Female'],
+            professor__discipline__isnull=False
+        ).order_by('professor__discipline')
+        
+        disciplines = {}
+        for item in discipline_gender_stats:
+            discipline = item['professor__discipline']
+            gender = item['professor__gender']
+            
+            if discipline not in disciplines:
+                disciplines[discipline] = {'Male': {}, 'Female': {}}
+                
+            disciplines[discipline][gender] = {
+                'avg_rating': round(item['avg_rating'], 2),
+                'count': item['count']
+            }
+        
+        results = {
+            'overall': stats,
+            'disciplines': disciplines
+        }
+        
+        # Cache the results
+        cache.set(cache_key, results, CACHE_TIMEOUT_LONG)
+        
+        return Response(results)
 
 class RatingViewSet(viewsets.ModelViewSet):
     queryset = Rating.objects.all()
@@ -580,6 +836,13 @@ class RatingViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'])
     def stats(self, request):
         """Get institution-wide rating statistics"""
+        # Check cache first
+        cache_key = 'rating_stats'
+        cached_data = cache.get(cache_key)
+        
+        if cached_data:
+            return Response(cached_data)
+        
         # Get total evaluation count using count() instead of loading all records
         evaluation_count = Rating.objects.count()
         
@@ -601,10 +864,15 @@ class RatingViewSet(viewsets.ModelViewSet):
         
         metrics['trend'] = recent_avg - (metrics['avg_rating'] or 0)
         
-        return Response({
+        data = {
             'evaluationCount': evaluation_count,
             'metrics': metrics
-        })
+        }
+        
+        # Cache the results
+        cache.set(cache_key, data, CACHE_TIMEOUT_SHORT)
+        
+        return Response(data)
 
 class SentimentViewSet(viewsets.ModelViewSet):
     queryset = Sentiment.objects.all()

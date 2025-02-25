@@ -1,11 +1,12 @@
-from django.db.models import Avg, Count, F
+from django.db.models import Avg, Count, F, Value, CharField, Q
+from django.db.models.expressions import RawSQL
 from django.utils import timezone
+from django.db import connection  # Add connection import
 from datetime import timedelta
 from .models import Rating, Sentiment, Professor
 from collections import Counter
 from itertools import chain
 from scipy import stats
-import pandas as pd
 
 def calculate_professor_metrics(professor_id):
     """Calculate aggregate metrics for a professor"""
@@ -29,11 +30,14 @@ def calculate_professor_metrics(professor_id):
     metrics['trend'] = (recent_metrics['recent_avg'] or 0) - (metrics['avg_rating'] or 0)
     return metrics
 
-def get_sentiment_summary(professor_id):
-    """Get sentiment analysis summary for a professor"""    
-    sentiments = Sentiment.objects.filter(professor_id=professor_id)
+def get_sentiment_summary(professor_id=None, institution=False):
+    """Get sentiment analysis summary for a professor or institution-wide"""    
+    if institution:
+        sentiments = Sentiment.objects.all()
+    else:
+        sentiments = Sentiment.objects.filter(professor_id=professor_id)
     
-    # Get word frequencies with gender information
+    # Get word frequencies with gender information using SQL
     sentiments_with_gender = sentiments.annotate(
         gender=F('professor__gender')
     ).filter(gender__in=['Male', 'Female'])
@@ -41,48 +45,88 @@ def get_sentiment_summary(professor_id):
     male_sentiments = sentiments_with_gender.filter(gender='Male')
     female_sentiments = sentiments_with_gender.filter(gender='Female')
     
-    # Get gender-specific term frequencies for both VADER and LEXICON
-    def get_term_frequencies(queryset, terms_field):
-        terms = chain.from_iterable(s[terms_field] for s in queryset if s[terms_field])
-        return Counter(terms)
+    # Get gender-specific term frequencies using SQL Unnest for both VADER and LEXICON
+    def get_term_frequencies_sql(queryset, terms_field):
+        """Use standard PostgreSQL syntax to count term frequencies from ArrayField"""
+        if not queryset.exists():
+            return {}
+            
+        # Use standard PostgreSQL query with jsonb_array_elements_text
+        query = f"""
+            SELECT t.term, COUNT(*) as count
+            FROM ({queryset.query}) as base_query
+            CROSS JOIN LATERAL jsonb_array_elements_text(base_query.{terms_field}) AS t(term)
+            WHERE t.term IS NOT NULL
+            GROUP BY t.term
+            ORDER BY count DESC
+        """
+        
+        # Execute the raw query
+        with connection.cursor() as cursor:
+            cursor.execute(query)
+            results = cursor.fetchall()
+        
+        # Convert results to dictionary
+        return {term: count for term, count in results}
     
-    # Get frequencies for both VADER and LEXICON terms
-    male_pos_lexicon = get_term_frequencies(male_sentiments.values('positive_terms_lexicon'), 'positive_terms_lexicon')
-    male_neg_lexicon = get_term_frequencies(male_sentiments.values('negative_terms_lexicon'), 'negative_terms_lexicon')
-    female_pos_lexicon = get_term_frequencies(female_sentiments.values('positive_terms_lexicon'), 'positive_terms_lexicon')
-    female_neg_lexicon = get_term_frequencies(female_sentiments.values('negative_terms_lexicon'), 'negative_terms_lexicon')
+    # Get frequencies for both VADER and LEXICON terms using SQL
+    male_pos_lexicon = get_term_frequencies_sql(male_sentiments, 'positive_terms_lexicon')
+    male_neg_lexicon = get_term_frequencies_sql(male_sentiments, 'negative_terms_lexicon')
+    female_pos_lexicon = get_term_frequencies_sql(female_sentiments, 'positive_terms_lexicon')
+    female_neg_lexicon = get_term_frequencies_sql(female_sentiments, 'negative_terms_lexicon')
     
-    male_pos_vader = get_term_frequencies(male_sentiments.values('positive_terms_vader'), 'positive_terms_vader')
-    male_neg_vader = get_term_frequencies(male_sentiments.values('negative_terms_vader'), 'negative_terms_vader')
-    female_pos_vader = get_term_frequencies(female_sentiments.values('positive_terms_vader'), 'positive_terms_vader')
-    female_neg_vader = get_term_frequencies(female_sentiments.values('negative_terms_vader'), 'negative_terms_vader')
+    male_pos_vader = get_term_frequencies_sql(male_sentiments, 'positive_terms_vader')
+    male_neg_vader = get_term_frequencies_sql(male_sentiments, 'negative_terms_vader')
+    female_pos_vader = get_term_frequencies_sql(female_sentiments, 'positive_terms_vader')
+    female_neg_vader = get_term_frequencies_sql(female_sentiments, 'negative_terms_vader')
     
     def calculate_gender_bias(male_counter, female_counter, bias_threshold=1.1):
-        all_terms = set(male_counter.keys()) | set(female_counter.keys())
+        """Calculate gender bias in term usage"""
+        # Convert dictionary counters to Counter objects for easy manipulation
+        male_counter = Counter(male_counter)
+        female_counter = Counter(female_counter)
+        
+        # Calculate totals for relative frequencies
         male_total = sum(male_counter.values()) or 1
         female_total = sum(female_counter.values()) or 1
         
-        result = []
+        # Get all unique terms
+        all_terms = set(male_counter.keys()) | set(female_counter.keys())
+        
+        # Calculate relative frequencies and bias
+        terms_data = []
+        
         for term in all_terms:
             male_freq = male_counter[term]
             female_freq = female_counter[term]
+            
+            # Calculate relative frequencies
             male_rel_freq = male_freq / male_total
             female_rel_freq = female_freq / female_total
             
+            # Only include terms that appear more than once total
+            if male_freq + female_freq < 2:
+                continue
+            
+            # Determine bias
             if male_rel_freq > bias_threshold * female_rel_freq:
                 bias = 'Male'
             elif female_rel_freq > bias_threshold * male_rel_freq:
                 bias = 'Female'
             else:
-                continue
-                
-            result.append({
+                bias = 'Neutral'
+            
+            terms_data.append({
                 'term': term,
                 'male_freq': male_freq,
                 'female_freq': female_freq,
-                'bias': bias
+                'male_rel_freq': male_rel_freq,
+                'female_rel_freq': female_rel_freq,
+                'bias': bias,
+                'total_freq': male_freq + female_freq
             })
-        return sorted(result, key=lambda x: max(x['male_freq'], x['female_freq']), reverse=True)[:20]
+        
+        return terms_data
     
     # Calculate term frequencies for all sentiments
     all_pos_lexicon = Counter()
@@ -91,6 +135,7 @@ def get_sentiment_summary(professor_id):
     all_neg_vader = Counter()
     
     for s in sentiments:
+        # Add term frequencies to counters
         if s.positive_terms_lexicon:
             all_pos_lexicon.update(s.positive_terms_lexicon)
         if s.negative_terms_lexicon:
@@ -137,6 +182,38 @@ def get_sentiment_summary(professor_id):
     }
     
     return summary
+
+def get_term_frequencies_institutional(sentiment_type='vader', term_type='positive', gender=None):
+    """Get term frequencies at institutional level using standard PostgreSQL"""
+    # Determine which field to use based on sentiment_type and term_type
+    if sentiment_type == 'vader':
+        field = 'positive_terms_vader' if term_type == 'positive' else 'negative_terms_vader'
+    else:
+        field = 'positive_terms_lexicon' if term_type == 'positive' else 'negative_terms_lexicon'
+    
+    # Build the gender filter condition
+    gender_condition = "AND p.gender = %s" if gender else "AND p.gender IN ('Male', 'Female')"
+    gender_params = [gender] if gender else []
+    
+    # Use standard PostgreSQL query with jsonb_array_elements_text
+    query = f"""
+        SELECT t.term, COUNT(*) as count
+        FROM api_sentiment s
+        JOIN api_professor p ON CAST(s.professor_id AS VARCHAR) = p.professor_id
+        CROSS JOIN LATERAL jsonb_array_elements_text(s.{field}) AS t(term)
+        WHERE t.term IS NOT NULL
+        {gender_condition}
+        GROUP BY t.term
+        ORDER BY count DESC
+    """
+    
+    # Execute the raw query
+    with connection.cursor() as cursor:
+        cursor.execute(query, gender_params)
+        results = cursor.fetchall()
+    
+    # Convert results to list of dicts
+    return [{'id': 1, 'term': term, 'count': count} for term, count in results]
 
 def generate_recommendations(professor_id):
     """Generate teaching improvement recommendations based on ratings and comments"""
@@ -243,16 +320,21 @@ def calculate_gender_distribution():
         distributions = []
         field_name = 'sub_discipline' if is_sub_discipline else 'discipline'
         for item in queryset:
+            # Safely calculate percentages
             total = item['total'] or 1  # Avoid division by zero
+            female_percent = round((item['female_count'] * 100.0) / total, 2)
+            male_percent = round((item['male_count'] * 100.0) / total, 2)
+            
             distributions.append({
                 field_name: item[field_name],
                 'total': item['total'],
                 'female_count': item['female_count'],
                 'male_count': item['male_count'],
-                'female_percent': round((item['female_count'] * 100.0) / total, 2),
-                'male_percent': round((item['male_count'] * 100.0) / total, 2),
+                'female_percent': female_percent,
+                'male_percent': male_percent,
                 'rating': item['avg_rating']
             })
+        
         # Sort by rating - will be used in descending order for top, ascending for bottom
         return sorted(distributions, key=lambda x: x['rating'] or 0)
     

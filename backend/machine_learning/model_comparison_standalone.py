@@ -160,7 +160,6 @@ class ModelComparison:
         print(f"Loading RF vectorizer from: {MODEL_PATHS['rf']['vectorizer']}")
         rf_model = load(MODEL_PATHS['rf']['model'])
         rf_vectorizer = load(MODEL_PATHS['rf']['vectorizer'])
-        print("RF vectorizer loaded. Attributes:", dir(rf_vectorizer))
         self.models['rf'] = {
             'model': rf_model,
             'vectorizer': rf_vectorizer
