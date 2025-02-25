@@ -13,7 +13,9 @@ from tabulate import tabulate
 import torch.nn as nn
 import json
 import sys
-sys.path.append('../')  # Add parent directory to Python path
+import os
+# Add the backend directory to the Python path
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from data_processing.text_preprocessing import clean_text
 import warnings
 warnings.filterwarnings('ignore')
@@ -35,23 +37,25 @@ NEGATIVE_COMMENTS = [
     "Let's face it, he feels good when his students are failing. He is so happy to give C- instead of helping his students to do better. For 3/4 of the class to fail an exam, there must be something wrong with his teaching!"
 ]
 
-# Model paths
+# Get the absolute path to the ml_models_trained directory
+MODEL_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'ml_models_trained')
+
 MODEL_PATHS = {
     'lstm': {
-        'model': 'ml_models_trained/lstm_sentiment.pt',
-        'vocab': 'ml_model_dev/vocab.json'
+        'model': os.path.join(MODEL_DIR, 'lstm_sentiment.pt'),
+        'vocab': os.path.join(MODEL_DIR, 'vocab.json')
     },
     'cnn': {
-        'model': 'ml_models_trained/cnn_sentiment.pt',
-        'vocab': 'ml_model_dev/vocab.json'
+        'model': os.path.join(MODEL_DIR, 'cnn_sentiment.pt'), 
+        'vocab': os.path.join(MODEL_DIR, 'vocab.json')
     },
     'rf': {
-        'model': 'ml_models_trained/rf_model.joblib',
-        'vectorizer': 'ml_models_trained/rf_tfidf_vectorizer.joblib'
+        'model': os.path.join(MODEL_DIR, 'rf_model.joblib'),
+        'vectorizer': os.path.join(MODEL_DIR, 'rf_tfidf_vectorizer_repaired.joblib')
     },
     'svc': {
-        'model': 'ml_models_trained/linearsvc_model.joblib',
-        'vectorizer': 'ml_models_trained/svc_tfidf_vectorizer.joblib'
+        'model': os.path.join(MODEL_DIR, 'linearsvc_model.joblib'),
+        'vectorizer': os.path.join(MODEL_DIR, 'svc_tfidf_vectorizer_repaired.joblib')
     }
 }
 
@@ -121,14 +125,15 @@ class ModelComparison:
         print("\nLoading models...")
         
         # Load vocabulary for deep learning models
+        print(f"Loading vocab from: {MODEL_PATHS['lstm']['vocab']}")
         with open(MODEL_PATHS['lstm']['vocab'], 'r') as f:
             self.vocab = json.load(f)
         
         # Load LSTM with embed_dim=128
-        print("Loading LSTM model...")
+        print(f"Loading LSTM from: {MODEL_PATHS['lstm']['model']}")
         lstm = CustomSentimentLSTM(
             vocab_size=len(self.vocab),
-            embed_dim=128,  # LSTM uses 128
+            embed_dim=128,
             hidden_dim=256,
             num_layers=2,
             dropout=0.5
@@ -138,10 +143,10 @@ class ModelComparison:
         self.models['lstm'] = lstm
 
         # Load CNN with embed_dim=300
-        print("Loading CNN model...")
+        print(f"Loading CNN from: {MODEL_PATHS['cnn']['model']}")
         cnn = SentimentCNN(
             vocab_size=len(self.vocab),
-            embed_dim=300,  # CNN uses 300
+            embed_dim=300,
             num_filters=100,
             filter_sizes=[3, 4, 5],
             dropout=0.5
@@ -151,14 +156,19 @@ class ModelComparison:
         self.models['cnn'] = cnn
 
         # Load Random Forest
-        print("Loading Random Forest model...")
+        print(f"Loading Random Forest from: {MODEL_PATHS['rf']['model']}")
+        print(f"Loading RF vectorizer from: {MODEL_PATHS['rf']['vectorizer']}")
+        rf_model = load(MODEL_PATHS['rf']['model'])
+        rf_vectorizer = load(MODEL_PATHS['rf']['vectorizer'])
+        print("RF vectorizer loaded. Attributes:", dir(rf_vectorizer))
         self.models['rf'] = {
-            'model': load(MODEL_PATHS['rf']['model']),
-            'vectorizer': load(MODEL_PATHS['rf']['vectorizer'])
+            'model': rf_model,
+            'vectorizer': rf_vectorizer
         }
 
         # Load LinearSVC
-        print("Loading LinearSVC model...")
+        print(f"Loading LinearSVC from: {MODEL_PATHS['svc']['model']}")
+        print(f"Loading SVC vectorizer from: {MODEL_PATHS['svc']['vectorizer']}")
         self.models['svc'] = {
             'model': load(MODEL_PATHS['svc']['model']),
             'vectorizer': load(MODEL_PATHS['svc']['vectorizer'])
