@@ -402,52 +402,81 @@ def calculate_tukey_hsd():
         import pandas as pd
         import numpy as np
         
-        # Fetch ratings data with professor gender info
-        ratings_data = Rating.objects.select_related('professor').values(
-            'avg_rating', 
-            'professor__gender',
-            'professor__discipline',
-            'professor__sub_discipline'
-        ).exclude(
-            professor__gender__isnull=True
-        ).exclude(
-            professor__discipline__isnull=True
-        ).exclude(
-            avg_rating__isnull=True
-        )
-        
-        if not ratings_data:
-            raise ValueError("No valid ratings data found for analysis")
-        
-        # Convert to pandas DataFrame
-        df = pd.DataFrame(list(ratings_data))
-        df.columns = ['avg_rating', 'gender', 'discipline', 'sub_discipline']
-        
-        # Create combined columns for gender-discipline interaction
-        df['gender_discipline'] = df['gender'] + ' - ' + df['discipline']
-        df['gender_sub_discipline'] = df.apply(
-            lambda x: f"{x['gender']} - {x['sub_discipline']}" if pd.notnull(x['sub_discipline']) else None,
-            axis=1
-        )
-        
-        # Perform Tukey's HSD test for disciplines
-        discipline_groups = df.groupby('gender_discipline')['avg_rating'].agg(['count', 'mean'])
-        valid_disciplines = discipline_groups[discipline_groups['count'] >= 2].index
-        
-        df_filtered = df[df['gender_discipline'].isin(valid_disciplines)]
-        if len(df_filtered) < 2:
-            raise ValueError("Insufficient data for discipline analysis")
+        # Use raw SQL to fetch the data efficiently
+        with connection.cursor() as cursor:
+            # Query for disciplines
+            cursor.execute("""
+                WITH gender_discipline_avg AS (
+                    SELECT 
+                        p.gender,
+                        p.discipline,
+                        r.avg_rating,
+                        CONCAT(p.gender, ' - ', p.discipline) as gender_discipline
+                    FROM api_rating r
+                    JOIN api_professor p ON CAST(r.professor_id AS VARCHAR) = p.professor_id
+                    WHERE p.gender IN ('Male', 'Female')
+                    AND p.discipline IS NOT NULL
+                    AND r.avg_rating IS NOT NULL
+                )
+                SELECT 
+                    gender_discipline,
+                    gender,
+                    discipline,
+                    avg_rating
+                FROM gender_discipline_avg
+                WHERE gender_discipline IN (
+                    SELECT gender_discipline
+                    FROM gender_discipline_avg
+                    GROUP BY gender_discipline
+                    HAVING COUNT(*) >= 2
+                )
+                ORDER BY discipline, gender
+            """)
+            discipline_results = cursor.fetchall()
             
-        discipline_results = pairwise_tukeyhsd(
-            df_filtered['avg_rating'], 
-            df_filtered['gender_discipline']
+            # Query for sub-disciplines
+            cursor.execute("""
+                WITH gender_subdiscipline_avg AS (
+                    SELECT 
+                        p.gender,
+                        p.sub_discipline,
+                        r.avg_rating,
+                        CONCAT(p.gender, ' - ', p.sub_discipline) as gender_subdiscipline
+                    FROM api_rating r
+                    JOIN api_professor p ON CAST(r.professor_id AS VARCHAR) = p.professor_id
+                    WHERE p.gender IN ('Male', 'Female')
+                    AND p.sub_discipline IS NOT NULL
+                    AND r.avg_rating IS NOT NULL
+                )
+                SELECT 
+                    gender_subdiscipline,
+                    gender,
+                    sub_discipline,
+                    avg_rating
+                FROM gender_subdiscipline_avg
+                WHERE gender_subdiscipline IN (
+                    SELECT gender_subdiscipline
+                    FROM gender_subdiscipline_avg
+                    GROUP BY gender_subdiscipline
+                    HAVING COUNT(*) >= 2
+                )
+                ORDER BY sub_discipline, gender
+            """)
+            subdiscipline_results = cursor.fetchall()
+        
+        # Process discipline results
+        if not discipline_results:
+            raise ValueError("No valid ratings data found for discipline analysis")
+            
+        discipline_df = pd.DataFrame(discipline_results, columns=['gender_discipline', 'gender', 'discipline', 'avg_rating'])
+        discipline_tukey = pairwise_tukeyhsd(
+            discipline_df['avg_rating'],
+            discipline_df['gender_discipline']
         )
-        reject = discipline_results.reject  # Boolean array of rejected hypotheses
-
         
         # Filter discipline results for same-discipline comparisons
         discipline_comparisons = []
-        for i, comp in enumerate(discipline_results.summary().data[1:]):
+        for i, comp in enumerate(discipline_tukey.summary().data[1:]):
             if comp[0].split(' - ')[1] == comp[1].split(' - ')[1]:
                 discipline_comparisons.append({
                     'group1': comp[0],
@@ -459,38 +488,31 @@ def calculate_tukey_hsd():
                     'reject': comp[6] == 'True'
                 })
         
-        # Perform Tukey's HSD test for sub-disciplines
-        sub_df = df.dropna(subset=['sub_discipline'])
-        sub_discipline_comparisons = []
-        
-        if not sub_df.empty:
-            sub_discipline_groups = sub_df.groupby('gender_sub_discipline')['avg_rating'].agg(['count', 'mean'])
-            valid_sub_disciplines = sub_discipline_groups[sub_discipline_groups['count'] >= 2].index
+        # Process sub-discipline results
+        subdiscipline_comparisons = []
+        if subdiscipline_results:
+            subdiscipline_df = pd.DataFrame(subdiscipline_results, columns=['gender_subdiscipline', 'gender', 'sub_discipline', 'avg_rating'])
+            subdiscipline_tukey = pairwise_tukeyhsd(
+                subdiscipline_df['avg_rating'],
+                subdiscipline_df['gender_subdiscipline']
+            )
             
-            sub_df_filtered = sub_df[sub_df['gender_sub_discipline'].isin(valid_sub_disciplines)]
-            
-            if len(sub_df_filtered) >= 2:
-                sub_discipline_results = pairwise_tukeyhsd(
-                    sub_df_filtered['avg_rating'], 
-                    sub_df_filtered['gender_sub_discipline']
-                )
-                
-                # Filter sub-discipline results
-                for i, comp in enumerate(sub_discipline_results.summary().data[1:]):
-                    if comp[0].split(' - ')[1] == comp[1].split(' - ')[1]:
-                        sub_discipline_comparisons.append({
-                            'group1': comp[0],
-                            'group2': comp[1],
-                            'meandiff': float(comp[2]),
-                            'lower': float(comp[3]),
-                            'upper': float(comp[4]),
-                            'p_adj': float(comp[5]),
-                            'reject': comp[6] == 'True'
-                        })
+            # Filter sub-discipline results
+            for i, comp in enumerate(subdiscipline_tukey.summary().data[1:]):
+                if comp[0].split(' - ')[1] == comp[1].split(' - ')[1]:
+                    subdiscipline_comparisons.append({
+                        'group1': comp[0],
+                        'group2': comp[1],
+                        'meandiff': float(comp[2]),
+                        'lower': float(comp[3]),
+                        'upper': float(comp[4]),
+                        'p_adj': float(comp[5]),
+                        'reject': comp[6] == 'True'
+                    })
         
         return {
             'discipline_comparisons': discipline_comparisons,
-            'sub_discipline_comparisons': sub_discipline_comparisons
+            'sub_discipline_comparisons': subdiscipline_comparisons
         }
         
     except Exception as e:
@@ -501,25 +523,27 @@ def calculate_tukey_hsd():
 
 def calculate_gender_discipline_heatmap():
     """Calculate average ratings by gender and discipline for heatmap visualization"""
-    from django.db.models import Avg
-    
-    heatmap_data = Rating.objects.select_related('professor').values(
-        'professor__gender', 
-        'professor__discipline'
-    ).annotate(
-        avg_rating=Avg('avg_rating')
-    ).filter(
-        professor__gender__isnull=False,
-        professor__discipline__isnull=False
-    )
+    with connection.cursor() as cursor:
+        cursor.execute("""
+            SELECT 
+                p.gender as gender,
+                p.discipline as discipline,
+                ROUND(AVG(r.avg_rating)::numeric, 2) as avg_rating
+            FROM api_rating r
+            JOIN api_professor p ON CAST(r.professor_id AS VARCHAR) = p.professor_id
+            WHERE p.gender IS NOT NULL 
+            AND p.discipline IS NOT NULL
+            GROUP BY p.gender, p.discipline
+            ORDER BY p.discipline, p.gender
+        """)
+        results = cursor.fetchall()
     
     # Transform into the format needed for the heatmap
-    result = []
-    for entry in heatmap_data:
-        result.append({
-            'gender': entry['professor__gender'],
-            'discipline': entry['professor__discipline'],
-            'avg_rating': round(float(entry['avg_rating']), 2) if entry['avg_rating'] else 0
-        })
-    
-    return result
+    return [
+        {
+            'gender': gender,
+            'discipline': discipline,
+            'avg_rating': float(avg_rating) if avg_rating else 0
+        }
+        for gender, discipline, avg_rating in results
+    ]
