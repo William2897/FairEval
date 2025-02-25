@@ -24,3 +24,9 @@ build/
 __tests__/
 test/
 tests/
+
+# Machine Learning files and models
+machine_learning/
+
+#csv
+*.csv

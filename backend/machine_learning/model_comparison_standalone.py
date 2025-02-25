@@ -12,6 +12,8 @@ from joblib import load
 from tabulate import tabulate
 import torch.nn as nn
 import json
+import sys
+sys.path.append('../')  # Add parent directory to Python path
 from data_processing.text_preprocessing import clean_text
 import warnings
 warnings.filterwarnings('ignore')
