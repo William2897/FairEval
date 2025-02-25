@@ -37,7 +37,7 @@ NEGATIVE_COMMENTS = [
     "Let's face it, he feels good when his students are failing. He is so happy to give C- instead of helping his students to do better. For 3/4 of the class to fail an exam, there must be something wrong with his teaching!"
 ]
 
-# Get the absolute path to the ml_models_trained directory
+# absolute path to ml_models_trained directory
 MODEL_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'ml_models_trained')
 
 MODEL_PATHS = {
@@ -51,11 +51,11 @@ MODEL_PATHS = {
     },
     'rf': {
         'model': os.path.join(MODEL_DIR, 'rf_model.joblib'),
-        'vectorizer': os.path.join(MODEL_DIR, 'rf_tfidf_vectorizer_repaired.joblib')
+        'vectorizer': os.path.join(MODEL_DIR, 'rf_tfidf_vectorizer.joblib')
     },
     'svc': {
         'model': os.path.join(MODEL_DIR, 'linearsvc_model.joblib'),
-        'vectorizer': os.path.join(MODEL_DIR, 'svc_tfidf_vectorizer_repaired.joblib')
+        'vectorizer': os.path.join(MODEL_DIR, 'svc_tfidf_vectorizer.joblib')
     }
 }
 
