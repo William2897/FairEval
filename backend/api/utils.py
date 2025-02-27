@@ -30,7 +30,7 @@ def calculate_professor_metrics(professor_id):
     metrics['trend'] = (recent_metrics['recent_avg'] or 0) - (metrics['avg_rating'] or 0)
     return metrics
 
-def get_sentiment_summary(professor_id=None, institution=False):
+def get_sentiment_summary(professor_id=None, institution=False, page=1, page_size=10):
     """Get sentiment analysis summary for a professor or institution-wide"""    
     if institution:
         sentiments = Sentiment.objects.all()
@@ -51,19 +51,26 @@ def get_sentiment_summary(professor_id=None, institution=False):
         if not queryset.exists():
             return {}
             
-        # Use standard PostgreSQL query with jsonb_array_elements_text
+        # Get all professor IDs from the queryset
+        professor_ids = list(queryset.values_list('professor_id', flat=True))
+        
+        if not professor_ids:
+            return {}
+        
+        # Use parameters instead of embedding the queryset SQL
         query = f"""
             SELECT t.term, COUNT(*) as count
-            FROM ({queryset.query}) as base_query
-            CROSS JOIN LATERAL jsonb_array_elements_text(base_query.{terms_field}) AS t(term)
+            FROM api_sentiment s
+            JOIN api_professor p ON CAST(s.professor_id AS VARCHAR) = p.professor_id
+            CROSS JOIN LATERAL jsonb_array_elements_text(s.{terms_field}) AS t(term)
             WHERE t.term IS NOT NULL
+            AND s.professor_id IN %s
             GROUP BY t.term
             ORDER BY count DESC
         """
         
-        # Execute the raw query
         with connection.cursor() as cursor:
-            cursor.execute(query)
+            cursor.execute(query, [tuple(professor_ids)])
             results = cursor.fetchall()
         
         # Convert results to dictionary
@@ -145,8 +152,20 @@ def get_sentiment_summary(professor_id=None, institution=False):
         if s.negative_terms_vader:
             all_neg_vader.update(s.negative_terms_vader)
     
+    # Add paginated comments to the response
+    total_comments = sentiments.count()
+    total_pages = (total_comments + page_size - 1) // page_size  # Calculate total pages
+    
+    # Get paginated comments
+    start_idx = (page - 1) * page_size
+    end_idx = start_idx + page_size
+    paginated_comments = list(sentiments.order_by('-created_at')[start_idx:end_idx].values(
+        'comment', 'processed_comment', 'sentiment', 'created_at'
+    ))
+    
     summary = {
-        'total_comments': sentiments.count(),
+        'total_comments': total_comments,
+        'total_pages': total_pages,
         'sentiment_breakdown': {
             'positive': sentiments.filter(sentiment=1).count(),
             'negative': sentiments.filter(sentiment=0).count()
@@ -178,7 +197,8 @@ def get_sentiment_summary(professor_id=None, institution=False):
         'recent_sentiments': list(
             sentiments.order_by('-created_at')[:5]
             .values('comment', 'processed_comment', 'sentiment', 'created_at')
-        )
+        ),
+        'comments': paginated_comments
     }
     
     return summary

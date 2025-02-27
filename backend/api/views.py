@@ -1,20 +1,25 @@
-from django.utils import timezone
+# Python standard library imports
+import os
+import json
 from datetime import timedelta
-from collections import Counter  # Add Counter import
-from rest_framework import viewsets, permissions, filters, status
-from rest_framework import pagination  # added import for pagination
-from rest_framework.decorators import action
-from rest_framework.response import Response
-from django_filters.rest_framework import DjangoFilterBackend
-from django.db.models import Avg, Count, Case, When, F, Value, CharField, Q
-from django.db.models.expressions import RawSQL
-from django.db.models.functions import Cast
+
+# Django imports
+from django.utils import timezone
+from django.db.models import Avg, Count
 from django.contrib.auth import login, logout, get_user_model, authenticate
 from django.shortcuts import get_object_or_404
 from django.http import Http404
-from django.core.paginator import Paginator
-from django.core.cache import cache  # Import Django's cache system
-from django.db import connection  # Add connection import
+from django.core.cache import cache
+from django.db import connection
+from django.conf import settings
+
+# Django REST framework imports
+from rest_framework import viewsets, permissions, filters, status, pagination
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from django_filters.rest_framework import DjangoFilterBackend
+
+# Local app imports
 from .models import Professor, Rating, Sentiment, UserRole
 from .serializers import (
     ProfessorSerializer, RatingSerializer,
@@ -22,10 +27,22 @@ from .serializers import (
 )
 from .filters import RatingFilter
 from .utils import (
-    calculate_professor_metrics, analyze_discipline_ratings,
-    analyze_discipline_gender_distribution, calculate_tukey_hsd, calculate_gender_discipline_heatmap,
-    calculate_gender_distribution, get_sentiment_summary
+    calculate_professor_metrics,
+    analyze_discipline_ratings,
+    analyze_discipline_gender_distribution,
+    calculate_tukey_hsd,
+    calculate_gender_discipline_heatmap,
+    calculate_gender_distribution,
+    get_sentiment_summary
 )
+
+# Machine learning imports
+import torch
+from machine_learning.gender_bias_explainer import GenderBiasExplainer
+from machine_learning.ml_model_dev.lstm import CustomSentimentLSTM
+from data_processing.gender_assignment import MALE_KEYWORDS, FEMALE_KEYWORDS
+
+
 
 User = get_user_model()
 
@@ -220,13 +237,13 @@ class ProfessorViewSet(viewsets.ModelViewSet):
     def sentiment_analysis(self, request, professor_id=None):
         """Get detailed sentiment analysis for a specific professor's ratings"""
         # Check if user is admin for institution-wide data
-        if professor_id == 'institution' and not request.user.role.role == 'ADMIN':
+        if not request.user.role.role == 'ADMIN':
             return Response({
                 "error": "Only administrators can view institution-wide sentiment analysis"
             }, status=status.HTTP_403_FORBIDDEN)
 
         try:
-            if professor_id == 'institution':
+            if request.user.role.role == 'ADMIN':
                 # Get institution-wide data
                 summary = {
                     'gender_analysis': {
@@ -288,7 +305,7 @@ class ProfessorViewSet(viewsets.ModelViewSet):
                 JOIN api_professor p ON CAST(s.professor_id AS VARCHAR) = p.professor_id
                 CROSS JOIN LATERAL jsonb_array_elements_text(s.{field}) AS t(term)
                 WHERE t.term IS NOT NULL
-                AND p.gender = 'Male'
+                AND p.gender IN ('Male', 'Female')
                 GROUP BY t.term
                 ORDER BY count DESC
             """)
@@ -383,12 +400,7 @@ class ProfessorViewSet(viewsets.ModelViewSet):
         """Get summarized sentiment statistics for a professor with paginated comments"""
         try:
             # For institution-wide data, use caching
-            if professor_id == 'institution':
-                # Check if user is admin for institution-wide data
-                if not request.user.role.role == 'ADMIN':
-                    return Response({"error": "You don't have permission to access this data"}, 
-                                    status=status.HTTP_403_FORBIDDEN)
-                
+            if request.user.role.role == 'ADMIN':   
                 # Check cache for institution data
                 page = request.query_params.get('page', 1)
                 cache_key = f'institution_sentiment_summary_page_{page}'
@@ -518,7 +530,7 @@ class ProfessorViewSet(viewsets.ModelViewSet):
     def word_clouds(self, request, professor_id=None):
         """Get word cloud data for both VADER and Lexicon analyses"""
         # Check if user is admin for institution-wide data
-        if professor_id == 'institution' and not request.user.role.role == 'ADMIN':
+        if not request.user.role.role == 'ADMIN':
             return Response({
                 "error": "Only administrators can view institution-wide sentiment analysis"
             }, status=status.HTTP_403_FORBIDDEN)
@@ -899,3 +911,197 @@ class TopicViewSet(viewsets.ViewSet):
         # Get unique topics from ratings and sentiments
         topics = Sentiment.objects.values('comment_topic').distinct()
         return Response({'topics': [t['comment_topic'] for t in topics if t['comment_topic']]})
+
+class SentimentExplainabilityViewSet(viewsets.ViewSet):
+    """
+    API endpoints for LSTM model explainability and gender bias analysis
+    """
+    lookup_field = 'professor_id'
+    permission_classes = [permissions.IsAuthenticated]
+    
+    @action(detail=False, methods=['post'])
+    def explain_comment(self, request):
+        """Analyze a comment with attention-based gender bias explanation"""
+        comment = request.data.get('comment', '')
+        discipline = request.data.get('discipline', None)
+        
+        if not comment:
+            return Response({"error": "Comment text is required"}, status=400)
+        
+        try:
+            # Load LSTM model and vocabulary
+            model_path = os.path.join(settings.BASE_DIR, 'machine_learning/ml_models_trained/lstm_sentiment.pt')
+            vocab_path = os.path.join(settings.BASE_DIR, 'machine_learning/ml_models_trained/vocab.json')
+            
+            # Check if model and vocab files exist
+            if not os.path.exists(model_path) or not os.path.exists(vocab_path):
+                return Response({"error": "Model files not found"}, status=500)
+                
+            # Load vocabulary
+            with open(vocab_path, 'r', encoding='utf-8') as f:
+                vocab = json.load(f)
+                
+            # Set up device
+            device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+            
+            # Initialize model
+            model = CustomSentimentLSTM(
+                vocab_size=len(vocab),
+                embed_dim=128,
+                hidden_dim=256,
+                num_layers=2,
+                dropout=0.5
+            ).to(device)
+            
+            # Load model weights
+            model.load_state_dict(torch.load(model_path, map_location=device))
+            model.eval()
+            
+            # Initialize explainer
+            explainer = GenderBiasExplainer(model, vocab, MALE_KEYWORDS, FEMALE_KEYWORDS)
+            
+            # Get explanation
+            explanation = explainer.explain_prediction(comment, discipline)
+            
+            return Response(explanation)
+            
+        except Exception as e:
+            import traceback
+            return Response({
+                "error": f"Error analyzing comment: {str(e)}",
+                "traceback": traceback.format_exc()
+            }, status=500)
+            
+    @action(detail=True, methods=['get'])
+    def professor_bias_analysis(self, request, professor_id=None):
+        """Analyze gender bias patterns in a professor's comments"""
+        try:
+            # Check if this is an admin or the professor themselves
+            if (request.user.role.role != 'ADMIN' and 
+                (not hasattr(request.user, 'username') or 
+                 request.user.username != professor_id)):
+                return Response({"error": "You don't have permission to access this data"}, 
+                               status=status.HTTP_403_FORBIDDEN)
+                
+            # Get the professor's comments
+            from api.models import Sentiment, Professor
+            
+            try:
+                professor = Professor.objects.get(professor_id=professor_id)
+            except Professor.DoesNotExist:
+                return Response({"error": f"Professor with ID {professor_id} not found"}, 
+                              status=status.HTTP_404_NOT_FOUND)
+                
+            # Get all comments for the professor
+            comments = Sentiment.objects.filter(
+                professor_id=professor_id,
+                comment__isnull=False
+            ).values_list('comment', flat=True)
+            
+            if not comments:
+                return Response({"error": "No comments found for this professor"}, status=404)
+                
+            # Load LSTM model and vocabulary (same as above)
+            model_path = os.path.join(settings.BASE_DIR, 'machine_learning/ml_models_trained/lstm_sentiment.pt')
+            vocab_path = os.path.join(settings.BASE_DIR, 'machine_learning/ml_models_trained/vocab.json')
+            
+            if not os.path.exists(model_path) or not os.path.exists(vocab_path):
+                return Response({"error": "Model files not found"}, status=500)
+                
+            with open(vocab_path, 'r', encoding='utf-8') as f:
+                vocab = json.load(f)
+                
+            device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+            
+            model = CustomSentimentLSTM(
+                vocab_size=len(vocab),
+                embed_dim=128,
+                hidden_dim=256,
+                num_layers=2,
+                dropout=0.5
+            ).to(device)
+            
+            model.load_state_dict(torch.load(model_path, map_location=device))
+            model.eval()
+            
+            # Initialize explainer
+            explainer = GenderBiasExplainer(model, vocab, MALE_KEYWORDS, FEMALE_KEYWORDS)
+            
+            # Get discipline for context
+            discipline = professor.discipline
+            
+            # Analyze a batch of comments (limit to 100 for performance)
+            comments_list = list(comments[:100])
+            
+            # Batch analysis
+            batch_results = explainer.analyze_comments_batch(comments_list, [discipline] * len(comments_list))
+            
+            # Get professor metrics for recommendations
+            metrics = calculate_professor_metrics(professor_id)
+            
+            # Generate bias-aware recommendations
+            recommendations = self._generate_bias_recommendations(batch_results, metrics)
+            
+            # Complete response with all data
+            response = {
+                'professor_id': professor_id,
+                'discipline': discipline,
+                'analysis_results': batch_results,
+                'recommendations': recommendations
+            }
+            
+            return Response(response)
+            
+        except Exception as e:
+            import traceback
+            return Response({
+                "error": f"Error analyzing professor bias: {str(e)}",
+                "traceback": traceback.format_exc()
+            }, status=500)
+            
+    def _generate_bias_recommendations(self, analysis_results, metrics):
+        """Generate teaching recommendations based on bias analysis"""
+        recommendations = []
+        
+        # Check for strong bias in comments
+        bias_score = analysis_results['overall_bias_score']
+        pos_bias = analysis_results['positive_comments_bias_score']
+        neg_bias = analysis_results['negative_comments_bias_score']
+        
+        # Strong overall gender bias detected
+        if abs(bias_score) > 0.3:
+            bias_direction = "male-associated" if bias_score > 0 else "female-associated"
+            recommendations.append({
+                'text': f"Student feedback shows potential bias toward {bias_direction} language. Consider using a diverse range of teaching examples and materials.",
+                'priority': 'high',
+                'impact_score': 8.5,
+                'supporting_evidence': analysis_results['top_male_terms' if bias_score > 0 else 'top_female_terms'][:5]
+            })
+        
+        # Different bias patterns in positive vs negative comments
+        if abs(pos_bias - neg_bias) > 0.3:
+            if pos_bias > neg_bias:
+                recommendations.append({
+                    'text': "Positive comments show more male-biased language than negative comments. This may indicate gender-based expectations for praise.",
+                    'priority': 'medium',
+                    'impact_score': 7.0,
+                    'supporting_evidence': analysis_results['top_male_terms'][:3]
+                })
+            else:
+                recommendations.append({
+                    'text': "Negative comments show more male-biased language than positive comments. Consider how different standards may be applied in criticism.",
+                    'priority': 'medium',
+                    'impact_score': 7.0,
+                    'supporting_evidence': analysis_results['top_male_terms'][:3]
+                })
+        
+        # Low rating with high gender bias
+        if (metrics.get('avg_rating', 0) < 3.5 and abs(bias_score) > 0.2):
+            recommendations.append({
+                'text': "Lower ratings show significant gender-biased language. Consider if teaching practices might benefit from more inclusive approaches.",
+                'priority': 'medium', 
+                'impact_score': 7.5,
+                'supporting_evidence': []
+            })
+            
+        return recommendations

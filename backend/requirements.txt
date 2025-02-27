@@ -24,6 +24,8 @@ gender-guesser==0.4.0
 fuzzywuzzy==0.18.0
 scipy>=1.9.0
 statsmodels>=0.14.0
+selenium==4.29.0
+seaborn==0.13.2
 
 # Text processing and sentiment analysis
 spacy==3.8.4
@@ -41,3 +43,4 @@ drf-spectacular==0.27.1
 pytest==8.0.0
 pytest-django==4.8.0
 factory-boy==3.3.0
+coverage==7.6.12

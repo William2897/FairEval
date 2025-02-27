@@ -20,31 +20,29 @@ from sklearn.model_selection import train_test_split
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
-import os
 
 # ----------------------------
-# 1. Arguments and Setup
+# 1. Configuration
 # ----------------------------
-parser = argparse.ArgumentParser(description="Train a custom LSTM sentiment model.")
-parser.add_argument('--csv_path', type=str, required=True, help="Path to CSV with 'text' and 'label' columns.")
-parser.add_argument('--model_out', type=str, default='lstm_sentiment.pt', help="Where to save the trained model.")
-parser.add_argument('--vocab_out', type=str, default='vocab.json', help="Where to save the built vocabulary.")
-parser.add_argument('--max_vocab', type=int, default=20000, help="Max vocabulary size.")
-parser.add_argument('--max_len', type=int, default=100, help="Max sequence length.")
-parser.add_argument('--embed_dim', type=int, default=128, help="Embedding dimension.")
-parser.add_argument('--hidden_dim', type=int, default=256, help="Hidden dimension in LSTM.")
-parser.add_argument('--num_layers', type=int, default=2, help="Number of LSTM layers.")
-parser.add_argument('--batch_size', type=int, default=64, help="Training batch size.")
-parser.add_argument('--dropout', type=float, default=0.5, help="Dropout rate")
-parser.add_argument('--epochs', type=int, default=10, help="Number of training epochs.")
-parser.add_argument('--lr', type=float, default=1e-3, help="Learning rate.")
-parser.add_argument('--train_split', type=float, default=0.7, help="Proportion of data for training")
-parser.add_argument('--val_split', type=float, default=0.15, help="Proportion of data for validation")
-parser.add_argument('--test_split', type=float, default=0.15, help="Proportion of data for testing")
-parser.add_argument('--results_out', type=str, default='LSTM_results_tuned.json', help="Where to save the evaluation results.")
-parser.add_argument('--tuning_results', type=str, help="Path to hyperparameter tuning results JSON")
-args = parser.parse_args()
-
+# Model configuration
+MODEL_CONFIG = {
+    'csv_path': 'dataset.csv',  # Path to CSV with 'text' and 'label' columns
+    'model_out': 'lstm_sentiment.pt',  # Where to save the trained model
+    'vocab_out': 'vocab.json',  # Where to save the built vocabulary
+    'max_vocab': 20000,  # Max vocabulary size
+    'max_len': 100,  # Max sequence length
+    'embed_dim': 128,  # Embedding dimension
+    'hidden_dim': 256,  # Hidden dimension in LSTM
+    'num_layers': 2,  # Number of LSTM layers
+    'batch_size': 64,  # Training batch size
+    'dropout': 0.5,  # Dropout rate
+    'epochs': 10,  # Number of training epochs
+    'lr': 1e-3,  # Learning rate
+    'train_split': 0.7,  # Proportion of data for training
+    'val_split': 0.15,  # Proportion of data for validation
+    'test_split': 0.15,  # Proportion of data for testing
+    'results_out': 'LSTM_results_tuned.json'  # Where to save the evaluation results
+}
 
 # ----------------------------
 # 2. Data Loading and Dataset
@@ -111,40 +109,52 @@ def build_vocab(texts, max_vocab=20000):
 # 4. LSTM Model Definition
 # ----------------------------
 class CustomSentimentLSTM(nn.Module):
-    def __init__(self, vocab_size, embed_dim, hidden_dim, num_layers, output_dim=1, dropout=0.3):
+    def __init__(self, vocab_size, embed_dim, hidden_dim, num_layers, dropout=0.5):
         super(CustomSentimentLSTM, self).__init__()
         self.embedding = nn.Embedding(vocab_size, embed_dim, padding_idx=1)
-        self.lstm = nn.LSTM(
-            embed_dim, 
-            hidden_dim, 
-            num_layers=num_layers, 
-            batch_first=True,
-            bidirectional=True,
-            dropout=dropout if num_layers > 1 else 0
-        )
-        self.attention = nn.Linear(hidden_dim * 2, 1)  # *2 for bidirectional
+        self.lstm = nn.LSTM(embed_dim, 
+                           hidden_dim, 
+                           num_layers=num_layers, 
+                           bidirectional=True, 
+                           dropout=dropout if num_layers > 1 else 0,
+                           batch_first=True)
         self.dropout = nn.Dropout(dropout)
+        
+        # Attention mechanism
+        self.attention = nn.Linear(hidden_dim * 2, 1)  # Bidirectional, so hidden_dim * 2
+        
+        # Output layers
         self.fc1 = nn.Linear(hidden_dim * 2, hidden_dim)
-        self.fc2 = nn.Linear(hidden_dim, output_dim)
         self.relu = nn.ReLU()
+        self.fc2 = nn.Linear(hidden_dim, 1)
         self.sigmoid = nn.Sigmoid()
-
-    def attention_net(self, lstm_output):
-        attention_weights = self.attention(lstm_output)
-        attention_weights = torch.softmax(attention_weights, dim=1)
-        context = torch.sum(attention_weights * lstm_output, dim=1)
-        return context
-
-    def forward(self, x):
+        
+    def forward(self, x, return_attention=False):
+        # x shape: [batch_size, seq_len]
         embedded = self.dropout(self.embedding(x))
+        # embedded shape: [batch_size, seq_len, embed_dim]
+        
         lstm_out, (h, c) = self.lstm(embedded)
+        # lstm_out shape: [batch_size, seq_len, hidden_dim * 2]
         
-        # Apply attention
-        context = self.attention_net(lstm_out)
+        # Calculate attention weights
+        attention_weights = self.attention(lstm_out).squeeze(2)
+        # attention_weights shape: [batch_size, seq_len]
         
-        # Dense layers with dropout
+        # Apply softmax to get normalized weights
+        attention_weights = torch.softmax(attention_weights, dim=1)
+        # attention_weights shape: [batch_size, seq_len]
+        
+        # Apply attention to the LSTM outputs
+        context = torch.bmm(attention_weights.unsqueeze(1), lstm_out).squeeze(1)
+        # context shape: [batch_size, hidden_dim * 2]
+        
+        # Feed through dense layers
         out = self.dropout(self.relu(self.fc1(context)))
         out = self.sigmoid(self.fc2(out))
+        
+        if return_attention:
+            return out, attention_weights
         return out
 
 def train_one_epoch(model, loader, criterion, optimizer, scheduler, device='cpu', clip_grad=1.0):
@@ -273,10 +283,10 @@ def save_results(results, filepath):
 # ----------------------------
 def main():
     # parse arguments
-    csv_path = args.csv_path
-    model_out = args.model_out
-    vocab_out = args.vocab_out
-    results_out = args.results_out
+    csv_path = MODEL_CONFIG['csv_path']
+    model_out = MODEL_CONFIG['model_out']
+    vocab_out = MODEL_CONFIG['vocab_out']
+    results_out = MODEL_CONFIG['results_out']
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Using device: {device}")
@@ -287,11 +297,11 @@ def main():
     # Data splits
     train_val_df, test_df = train_test_split(
         df, 
-        test_size=args.test_split,
+        test_size=MODEL_CONFIG['test_split'],
         random_state=42
     )
     
-    train_size = args.train_split / (args.train_split + args.val_split)
+    train_size = MODEL_CONFIG['train_split'] / (MODEL_CONFIG['train_split'] + MODEL_CONFIG['val_split'])
     train_df, val_df = train_test_split(
         train_val_df,
         train_size=train_size,
@@ -302,7 +312,7 @@ def main():
 
     # Build vocab from training data only
     print("Building vocabulary...")
-    word2index = build_vocab(train_df['processed_comment'].tolist(), max_vocab=args.max_vocab)
+    word2index = build_vocab(train_df['processed_comment'].tolist(), max_vocab=MODEL_CONFIG['max_vocab'])
     vocab_size = len(word2index)
     print(f"Vocab size = {vocab_size}")
 
@@ -311,30 +321,29 @@ def main():
         json.dump(word2index, f, ensure_ascii=False)
 
     # Create datasets and dataloaders
-    train_dataset = SentimentDataset(train_df, word2index, max_len=args.max_len)
-    val_dataset = SentimentDataset(val_df, word2index, max_len=args.max_len)
-    test_dataset = SentimentDataset(test_df, word2index, max_len=args.max_len)
+    train_dataset = SentimentDataset(train_df, word2index, max_len=MODEL_CONFIG['max_len'])
+    val_dataset = SentimentDataset(val_df, word2index, max_len=MODEL_CONFIG['max_len'])
+    test_dataset = SentimentDataset(test_df, word2index, max_len=MODEL_CONFIG['max_len'])
 
-    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
-    val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False)
-    test_loader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False)
+    train_loader = DataLoader(train_dataset, batch_size=MODEL_CONFIG['batch_size'], shuffle=True)
+    val_loader = DataLoader(val_dataset, batch_size=MODEL_CONFIG['batch_size'], shuffle=False)
+    test_loader = DataLoader(test_dataset, batch_size=MODEL_CONFIG['batch_size'], shuffle=False)
     
     # Initialize model
     model = CustomSentimentLSTM(
         vocab_size, 
-        args.embed_dim, 
-        args.hidden_dim, 
-        args.num_layers, 
-        output_dim=1, 
-        dropout=args.dropout
+        MODEL_CONFIG['embed_dim'], 
+        MODEL_CONFIG['hidden_dim'], 
+        MODEL_CONFIG['num_layers'], 
+        dropout=MODEL_CONFIG['dropout']
     )
     model = model.to(device)
 
     criterion = nn.BCELoss()
-    optimizer = optim.AdamW(model.parameters(), lr=args.lr, weight_decay=0.01)
+    optimizer = optim.AdamW(model.parameters(), lr=MODEL_CONFIG['lr'], weight_decay=0.01)
     scheduler = optim.lr_scheduler.CosineAnnealingLR(
         optimizer,
-        T_max=args.epochs,
+        T_max=MODEL_CONFIG['epochs'],
         eta_min=1e-6
     )
 
@@ -349,7 +358,7 @@ def main():
 
     # Training loop
     best_val_f1 = 0.0
-    for epoch in range(args.epochs):
+    for epoch in range(MODEL_CONFIG['epochs']):
         train_loss, train_acc, train_f1 = train_one_epoch(
             model, train_loader, criterion, optimizer, scheduler, 
             device=device, clip_grad=1.0
@@ -363,7 +372,7 @@ def main():
             'val': {'loss': val_loss, 'accuracy': val_acc, 'f1': val_f1}
         })
 
-        print(f"Epoch [{epoch+1}/{args.epochs}] "
+        print(f"Epoch [{epoch+1}/{MODEL_CONFIG['epochs']}] "
               f"Train Loss: {train_loss:.4f} | Acc: {train_acc:.4f} | F1: {train_f1:.4f} "
               f"|| Val Loss: {val_loss:.4f} | Acc: {val_acc:.4f} | F1: {val_f1:.4f}")
 

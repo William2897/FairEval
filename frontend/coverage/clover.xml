@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<coverage generated="1740653178551" clover="3.2.0">
+  <project timestamp="1740653178552" name="All files">
+    <metrics statements="104" coveredstatements="85" conditionals="117" coveredconditionals="53" methods="31" coveredmethods="24" elements="252" coveredelements="162" complexity="0" loc="104" ncloc="104" packages="1" files="2" classes="2"/>
+    <file name="BiasExplainer.tsx" path="/app/src/components/BiasExplainer.tsx">
+      <metrics statements="59" coveredstatements="47" conditionals="63" coveredconditionals="29" methods="16" coveredmethods="13"/>
+      <line num="1" count="2" type="stmt"/>
+      <line num="2" count="2" type="stmt"/>
+      <line num="3" count="2" type="stmt"/>
+      <line num="4" count="2" type="stmt"/>
+      <line num="47" count="2" type="stmt"/>
+      <line num="50" count="8" type="stmt"/>
+      <line num="51" count="8" type="stmt"/>
+      <line num="52" count="8" type="stmt"/>
+      <line num="53" count="8" type="stmt"/>
+      <line num="56" count="8" type="stmt"/>
+      <line num="59" count="3" type="stmt"/>
+      <line num="60" count="3" type="stmt"/>
+      <line num="61" count="3" type="stmt"/>
+      <line num="62" count="5" type="stmt"/>
+      <line num="64" count="2" type="stmt"/>
+      <line num="65" count="2" type="stmt"/>
+      <line num="67" count="1" type="stmt"/>
+      <line num="68" count="1" type="stmt"/>
+      <line num="73" count="8" type="stmt"/>
+      <line num="76" count="1" type="stmt"/>
+      <line num="80" count="1" type="stmt"/>
+      <line num="85" count="8" type="stmt"/>
+      <line num="86" count="1" type="cond" truecount="0" falsecount="1"/>
+      <line num="88" count="1" type="stmt"/>
+      <line num="89" count="1" type="stmt"/>
+      <line num="90" count="1" type="stmt"/>
+      <line num="92" count="1" type="stmt"/>
+      <line num="96" count="8" type="stmt"/>
+      <line num="97" count="2" type="cond" truecount="1" falsecount="0"/>
+      <line num="98" count="0" type="cond" truecount="0" falsecount="1"/>
+      <line num="99" count="0" type="cond" truecount="0" falsecount="1"/>
+      <line num="100" count="0" type="cond" truecount="0" falsecount="1"/>
+      <line num="101" count="0" type="stmt"/>
+      <line num="104" count="8" type="stmt"/>
+      <line num="105" count="2" type="cond" truecount="1" falsecount="0"/>
+      <line num="106" count="0" type="cond" truecount="0" falsecount="1"/>
+      <line num="107" count="0" type="cond" truecount="0" falsecount="1"/>
+      <line num="108" count="0" type="cond" truecount="0" falsecount="1"/>
+      <line num="109" count="0" type="stmt"/>
+      <line num="112" count="8" type="stmt"/>
+      <line num="126" count="1" type="stmt"/>
+      <line num="139" count="0" type="stmt"/>
+      <line num="143" count="5" type="stmt"/>
+      <line num="201" count="14" type="stmt"/>
+      <line num="202" count="14" type="stmt"/>
+      <line num="205" count="14" type="stmt"/>
+      <line num="206" count="14" type="cond" truecount="2" falsecount="0"/>
+      <line num="209" count="14" type="stmt"/>
+      <line num="210" count="14" type="stmt"/>
+      <line num="212" count="14" type="cond" truecount="1" falsecount="0"/>
+      <line num="213" count="2" type="stmt"/>
+      <line num="214" count="2" type="cond" truecount="1" falsecount="1"/>
+      <line num="216" count="14" type="cond" truecount="0" falsecount="1"/>
+      <line num="217" count="0" type="stmt"/>
+      <line num="218" count="0" type="cond" truecount="0" falsecount="2"/>
+      <line num="221" count="14" type="stmt"/>
+      <line num="257" count="2" type="stmt"/>
+      <line num="279" count="0" type="stmt"/>
+      <line num="301" count="2" type="stmt"/>
+    </file>
+    <file name="ProfessorBiasDashboard.tsx" path="/app/src/components/ProfessorBiasDashboard.tsx">
+      <metrics statements="45" coveredstatements="38" conditionals="54" coveredconditionals="24" methods="15" coveredmethods="11"/>
+      <line num="1" count="1" type="stmt"/>
+      <line num="2" count="1" type="stmt"/>
+      <line num="3" count="1" type="stmt"/>
+      <line num="4" count="1" type="stmt"/>
+      <line num="5" count="1" type="stmt"/>
+      <line num="39" count="1" type="stmt"/>
+      <line num="43" count="5" type="stmt"/>
+      <line num="46" count="5" type="stmt"/>
+      <line num="49" count="3" type="stmt"/>
+      <line num="50" count="1" type="stmt"/>
+      <line num="57" count="5" type="stmt"/>
+      <line num="60" count="1" type="cond" truecount="0" falsecount="1"/>
+      <line num="61" count="1" type="stmt"/>
+      <line num="62" count="2" type="stmt"/>
+      <line num="67" count="5" type="stmt"/>
+      <line num="68" count="3" type="cond" truecount="1" falsecount="0"/>
+      <line num="70" count="0" type="stmt"/>
+      <line num="71" count="0" type="stmt"/>
+      <line num="73" count="0" type="cond" truecount="0" falsecount="3"/>
+      <line num="75" count="0" type="stmt"/>
+      <line num="82" count="5" type="stmt"/>
+      <line num="83" count="3" type="stmt"/>
+      <line num="84" count="3" type="cond" truecount="0" falsecount="1"/>
+      <line num="85" count="3" type="cond" truecount="2" falsecount="1"/>
+      <line num="86" count="2" type="cond" truecount="1" falsecount="1"/>
+      <line num="89" count="5" type="stmt"/>
+      <line num="90" count="3" type="stmt"/>
+      <line num="91" count="3" type="cond" truecount="0" falsecount="1"/>
+      <line num="92" count="3" type="cond" truecount="1" falsecount="0"/>
+      <line num="93" count="1" type="cond" truecount="1" falsecount="1"/>
+      <line num="97" count="2" type="cond" truecount="1" falsecount="1"/>
+      <line num="102" count="5" type="cond" truecount="1" falsecount="0"/>
+      <line num="103" count="1" type="stmt"/>
+      <line num="114" count="4" type="cond" truecount="1" falsecount="0"/>
+      <line num="115" count="3" type="stmt"/>
+      <line num="122" count="1" type="cond" truecount="0" falsecount="1"/>
+      <line num="123" count="0" type="stmt"/>
+      <line num="130" count="1" type="stmt"/>
+      <line num="132" count="1" type="stmt"/>
+      <line num="207" count="3" type="stmt"/>
+      <line num="225" count="2" type="stmt"/>
+      <line num="248" count="1" type="stmt"/>
+      <line num="272" count="3" type="cond" truecount="1" falsecount="1"/>
+      <line num="292" count="0" type="stmt"/>
+      <line num="306" count="0" type="stmt"/>
+    </file>
+  </project>
+</coverage>

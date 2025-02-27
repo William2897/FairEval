@@ -11,9 +11,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import numpy as np
 from tqdm import tqdm
-import psutil
-import warnings
-from joblib import dump, load
+from joblib import dump
 
 # Arguments
 parser = argparse.ArgumentParser(description="Train a Random Forest with TF-IDF for sentiment analysis.")

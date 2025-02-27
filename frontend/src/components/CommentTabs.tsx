@@ -10,7 +10,7 @@ interface Comment {
 }
 
 interface CommentTabsProps {
-  comments: Comment[];
+  comments: Comment[] | undefined;
   className?: string;
 }
 
@@ -18,9 +18,11 @@ function classNames(...classes: string[]) {
   return classes.filter(Boolean).join(' ');
 }
 
-export const CommentTabs: React.FC<CommentTabsProps> = ({ comments, className = '' }) => {
-  const positiveComments = comments.filter(c => c.sentiment === 1);
-  const negativeComments = comments.filter(c => c.sentiment === 0);
+export const CommentTabs: React.FC<CommentTabsProps> = ({ comments = [], className = '' }) => {
+  // Ensure comments is an array before filtering
+  const safeComments = Array.isArray(comments) ? comments : [];
+  const positiveComments = safeComments.filter(c => c.sentiment === 1);
+  const negativeComments = safeComments.filter(c => c.sentiment === 0);
 
   return (
     <div className={`${className} bg-white rounded-lg shadow-md p-6`}>

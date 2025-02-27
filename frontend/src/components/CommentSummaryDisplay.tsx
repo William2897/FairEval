@@ -17,6 +17,7 @@ interface SentimentSummary {
     created_at: string;
   }>;
   total_pages: number;
+  message?: string;
 }
 
 interface CommentSummaryDisplayProps {
@@ -72,6 +73,16 @@ export const CommentSummaryDisplay: React.FC<CommentSummaryDisplayProps> = ({
     );
   }
 
+  // Handle case where there are no comments
+  if (summary.total_comments === 0 || summary.message?.includes('No sentiment data')) {
+    return (
+      <div className="text-gray-600 bg-gray-50 p-6 rounded-lg text-center">
+        <p className="text-lg font-medium">No comments available for analysis</p>
+        <p className="text-sm mt-2">This professor doesn't have any student comments to analyze yet.</p>
+      </div>
+    );
+  }
+
   const positivePercentage = ((summary.sentiment_breakdown.positive / summary.total_comments) * 100).toFixed(1);
   const negativePercentage = ((summary.sentiment_breakdown.negative / summary.total_comments) * 100).toFixed(1);
 
@@ -107,7 +118,7 @@ export const CommentSummaryDisplay: React.FC<CommentSummaryDisplayProps> = ({
       </div>
 
       {/* Comments Tabs */}
-      <CommentTabs comments={summary.comments} />
+      <CommentTabs comments={summary.comments || []} />
 
       {/* Pagination */}
       {summary.total_pages > 1 && (

@@ -10,6 +10,8 @@ router.register(r'users', views.UserViewSet)
 router.register(r'user-roles', views.UserRoleViewSet)
 router.register(r'auth', views.AuthViewSet, basename='auth')
 router.register(r'topics', views.TopicViewSet, basename='topics')
+router.register(r'sentiment-explainability', views.SentimentExplainabilityViewSet, basename='sentiment-explainability')
+
 
 urlpatterns = [
     path('', include(router.urls)),
