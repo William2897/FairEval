@@ -3,7 +3,6 @@ import { Loader2, Search, Filter, AlertOctagon, ChevronUp, ChevronDown, X, Chevr
 import { useState, useMemo, useEffect } from 'react';
 import { CommentSummaryDisplay } from '../components/CommentSummaryDisplay';
 import { DataUploadForm } from '../components/DataUploadForm';
-import { TopicModelVisualization } from '../components/TopicModelVisualization';
 import { RecommendationDisplay } from '../components/RecommendationDisplay';
 import { useAuth } from '../contexts/AuthContext';
 import axios from 'axios';
@@ -360,13 +359,6 @@ function Evaluations() {
               </h2>
               <RecommendationDisplay professorId={selectedProfessorId.toString()} />
             </div>
-
-            <div className="lg:col-span-2 bg-white shadow-md rounded-lg p-6">
-              <h2 className="text-xl font-semibold text-gray-900 mb-4">
-                Topic Analysis
-              </h2>
-              <TopicModelVisualization professorId={selectedProfessorId.toString()} />
-            </div>
           </div>
         )}
 
@@ -376,11 +368,6 @@ function Evaluations() {
             <div className="bg-white shadow-md rounded-lg p-6">
               <h2 className="text-xl font-semibold text-gray-900 mb-4">Data Management</h2>
               <DataUploadForm />
-            </div>
-
-            <div className="bg-white shadow-md rounded-lg p-6">
-              <h2 className="text-xl font-semibold text-gray-900 mb-4">Institution-wide Topic Analysis</h2>
-              <TopicModelVisualization />
             </div>
           </>
         )}

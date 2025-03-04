@@ -1055,15 +1055,19 @@ class SentimentExplainabilityViewSet(viewsets.ViewSet):
                 if 'explicit_female' in batch_results['category_stats'] and batch_results['category_stats']['explicit_female']['top_terms']:
                     top_female_terms.extend(batch_results['category_stats']['explicit_female']['top_terms'])
                 
-                # Get personality terms (typically more common in male professor evaluations)
-                if 'personality_entertainment' in batch_results['category_stats'] and batch_results['category_stats']['personality_entertainment']['top_terms']:
-                    if batch_results['descriptor_bias_score'] > 0:  # If positive bias score, these are male-associated
-                        top_male_terms.extend(batch_results['category_stats']['personality_entertainment']['top_terms'][:5])
+                # Get male-associated descriptor terms
+                if 'intellect_achievement' in batch_results['category_stats'] and batch_results['category_stats']['intellect_achievement']['top_terms']:
+                    top_male_terms.extend(batch_results['category_stats']['intellect_achievement']['top_terms'][:3])
                     
-                # Get competence terms (typically more common in female professor evaluations)  
-                if 'competence' in batch_results['category_stats'] and batch_results['category_stats']['competence']['top_terms']:
-                    if batch_results['descriptor_bias_score'] < 0:  # If negative bias score, these are female-associated
-                        top_female_terms.extend(batch_results['category_stats']['competence']['top_terms'][:5])
+                if 'entertainment_authority' in batch_results['category_stats'] and batch_results['category_stats']['entertainment_authority']['top_terms']:
+                    top_male_terms.extend(batch_results['category_stats']['entertainment_authority']['top_terms'][:3])
+                    
+                # Get female-associated descriptor terms
+                if 'competence_organization' in batch_results['category_stats'] and batch_results['category_stats']['competence_organization']['top_terms']:
+                    top_female_terms.extend(batch_results['category_stats']['competence_organization']['top_terms'][:3])
+                    
+                if 'warmth_nurturing' in batch_results['category_stats'] and batch_results['category_stats']['warmth_nurturing']['top_terms']:
+                    top_female_terms.extend(batch_results['category_stats']['warmth_nurturing']['top_terms'][:3])
             
             # Add top terms to the analysis results for frontend compatibility
             batch_results['top_male_terms'] = top_male_terms[:10]  # Limit to top 10
@@ -1099,30 +1103,45 @@ class SentimentExplainabilityViewSet(viewsets.ViewSet):
         # Extract terms for supporting evidence
         male_terms = []
         female_terms = []
-        personality_terms = []
-        competence_terms = []
+        male_pattern_terms = []
+        female_pattern_terms = []
         
         if 'category_stats' in analysis_results:
+            # Get explicit gendered terms
             if 'explicit_male' in analysis_results['category_stats'] and analysis_results['category_stats']['explicit_male']['top_terms']:
                 male_terms = [term for term, _ in analysis_results['category_stats']['explicit_male']['top_terms'][:5]]
             
             if 'explicit_female' in analysis_results['category_stats'] and analysis_results['category_stats']['explicit_female']['top_terms']:
                 female_terms = [term for term, _ in analysis_results['category_stats']['explicit_female']['top_terms'][:5]]
-                
-            if 'personality_entertainment' in analysis_results['category_stats'] and analysis_results['category_stats']['personality_entertainment']['top_terms']:
-                personality_terms = [term for term, _ in analysis_results['category_stats']['personality_entertainment']['top_terms'][:5]]
-                
-            if 'competence' in analysis_results['category_stats'] and analysis_results['category_stats']['competence']['top_terms']:
-                competence_terms = [term for term, _ in analysis_results['category_stats']['competence']['top_terms'][:5]]
+            
+            # Get male-associated pattern terms (intellect/achievement + entertainment/authority)
+            male_pattern_terms = []
+            if 'intellect_achievement' in analysis_results['category_stats'] and analysis_results['category_stats']['intellect_achievement']['top_terms']:
+                male_pattern_terms.extend([term for term, _ in analysis_results['category_stats']['intellect_achievement']['top_terms'][:3]])
+            
+            if 'entertainment_authority' in analysis_results['category_stats'] and analysis_results['category_stats']['entertainment_authority']['top_terms']:
+                male_pattern_terms.extend([term for term, _ in analysis_results['category_stats']['entertainment_authority']['top_terms'][:3]])
+            
+            # Get female-associated pattern terms (competence/organization + warmth/nurturing)
+            female_pattern_terms = []
+            if 'competence_organization' in analysis_results['category_stats'] and analysis_results['category_stats']['competence_organization']['top_terms']:
+                female_pattern_terms.extend([term for term, _ in analysis_results['category_stats']['competence_organization']['top_terms'][:3]])
+            
+            if 'warmth_nurturing' in analysis_results['category_stats'] and analysis_results['category_stats']['warmth_nurturing']['top_terms']:
+                female_pattern_terms.extend([term for term, _ in analysis_results['category_stats']['warmth_nurturing']['top_terms'][:3]])
         
         # Strong overall gender bias detected
         if abs(bias_score) > 0.3:
             bias_direction = "male-associated" if bias_score > 0 else "female-associated"
+            supporting_evidence = male_pattern_terms if bias_score > 0 else female_pattern_terms
+            if not supporting_evidence:
+                supporting_evidence = male_terms if bias_score > 0 else female_terms
+                
             recommendations.append({
                 'text': f"Student feedback shows potential bias toward {bias_direction} language. Consider using a diverse range of teaching examples and materials.",
                 'priority': 'high',
                 'impact_score': 8.5,
-                'supporting_evidence': male_terms if bias_score > 0 else female_terms
+                'supporting_evidence': supporting_evidence
             })
         
         # Different bias patterns in positive vs negative comments
@@ -1132,31 +1151,31 @@ class SentimentExplainabilityViewSet(viewsets.ViewSet):
                     'text': "Positive comments show more male-biased language than negative comments. This may indicate gender-based expectations for praise.",
                     'priority': 'medium',
                     'impact_score': 7.0,
-                    'supporting_evidence': male_terms
+                    'supporting_evidence': male_terms or male_pattern_terms
                 })
             else:
                 recommendations.append({
                     'text': "Negative comments show more male-biased language than positive comments. Consider how different standards may be applied in criticism.",
                     'priority': 'medium',
                     'impact_score': 7.0,
-                    'supporting_evidence': male_terms
+                    'supporting_evidence': male_terms or male_pattern_terms
                 })
         
         # Descriptor bias recommendation
         if abs(descriptor_bias) > 0.25:
             if descriptor_bias > 0:
                 recommendations.append({
-                    'text': "Students focus more on your personality and entertainment value than professional competence, which may reflect gender bias in student expectations.",
+                    'text': "Students focus more on your intellect, achievement, and entertainment value than professional competence and organization, which may reflect gender bias in student expectations.",
                     'priority': 'medium',
                     'impact_score': 7.0,
-                    'supporting_evidence': personality_terms
+                    'supporting_evidence': male_pattern_terms
                 })
             else:
                 recommendations.append({
-                    'text': "Students focus more on your professional competence than personality, which may reflect gender bias in how students evaluate professors.",
+                    'text': "Students focus more on your professional competence, organization, and nurturing qualities than intellect and authority, which may reflect gender bias in how students evaluate professors.",
                     'priority': 'medium',
                     'impact_score': 6.5,
-                    'supporting_evidence': competence_terms
+                    'supporting_evidence': female_pattern_terms
                 })
         
         # Low rating with high gender bias

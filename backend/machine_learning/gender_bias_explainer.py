@@ -607,7 +607,7 @@ class GenderBiasExplainer:
         }
         
     def _generate_batch_insights(self, overall_bias, descriptor_bias, pos_bias, neg_bias, 
-                                pos_descriptor_bias, neg_descriptor_bias, category_stats):
+                              pos_descriptor_bias, neg_descriptor_bias, category_stats):
         """Generate insights about gender bias patterns in the batch of comments"""
         insights = []
         
@@ -620,12 +620,12 @@ class GenderBiasExplainer:
         if abs(descriptor_bias) > 0.15:
             if descriptor_bias > 0:
                 insights.append(
-                    "These evaluations focus more on personality and entertainment value than competence, "
+                    "These evaluations focus more on intellect, achievement, and entertainment value than competence and organization, "
                     "a pattern typically seen more in evaluations of male professors."
                 )
             else:
                 insights.append(
-                    "These evaluations focus more on competence and qualifications than personality, "
+                    "These evaluations focus more on competence, organization, and nurturing qualities than intellect and entertainment, "
                     "a pattern typically seen more in evaluations of female professors."
                 )
                 
@@ -646,27 +646,35 @@ class GenderBiasExplainer:
         if abs(pos_descriptor_bias - neg_descriptor_bias) > 0.2:
             if pos_descriptor_bias > neg_descriptor_bias:
                 insights.append(
-                    "Positive comments focus more on personality and entertainment qualities, "
-                    "while negative comments focus more on competence and qualifications."
+                    "Positive comments focus more on intellect and entertainment qualities, "
+                    "while negative comments focus more on competence and organization."
                 )
             else:
                 insights.append(
-                    "Negative comments focus more on personality and entertainment qualities, "
-                    "while positive comments focus more on competence and qualifications."
+                    "Negative comments focus more on intellect and entertainment qualities, "
+                    "while positive comments focus more on competence and organization."
                 )
         
-        # Look at most common terms
-        if (category_stats['personality_entertainment']['total_occurrences'] > 
-            category_stats['competence']['total_occurrences'] * 2):
+        # Look at most common terms in the male and female associated categories
+        male_categories_total = (
+            category_stats.get('intellect_achievement', {}).get('total_occurrences', 0) + 
+            category_stats.get('entertainment_authority', {}).get('total_occurrences', 0)
+        )
+        
+        female_categories_total = (
+            category_stats.get('competence_organization', {}).get('total_occurrences', 0) + 
+            category_stats.get('warmth_nurturing', {}).get('total_occurrences', 0)
+        )
+        
+        if male_categories_total > female_categories_total * 2:
             insights.append(
-                "These comments heavily emphasize personality and entertainment qualities, "
-                "with much less focus on competence and qualifications."
+                "These comments heavily emphasize intellect, achievement, and entertainment qualities, "
+                "with much less focus on competence, organization, and nurturing qualities."
             )
-        elif (category_stats['competence']['total_occurrences'] > 
-              category_stats['personality_entertainment']['total_occurrences'] * 2):
+        elif female_categories_total > male_categories_total * 2:
             insights.append(
-                "These comments heavily emphasize competence and qualifications, "
-                "with much less focus on personality and entertainment qualities."
+                "These comments heavily emphasize competence, organization, and nurturing qualities, "
+                "with much less focus on intellect, achievement, and entertainment qualities."
             )
-            
+        
         return insights

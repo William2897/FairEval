@@ -65,9 +65,6 @@ interface BiasAnalysisResult {
       };
     };
     
-    // Keep existing properties for backward compatibility
-    top_male_terms: [string, number][];
-    top_female_terms: [string, number][];
   };
   recommendations: {
     text: string;
@@ -459,65 +456,7 @@ export const ProfessorBiasDashboard: React.FC<ProfessorBiasDashboardProps> = ({
               )}
             </div>
           </div>
-        </div>
-        
-        {/* Original top terms section - kept for backward compatibility */}
-        <div className="mt-6 border-t border-gray-200 pt-6">
-          <h3 className="text-lg font-medium text-gray-700 mb-3">
-            Legacy Analysis
-            <Tooltip text="This is the original gender term analysis for backward compatibility.">
-              <HelpCircle className="inline-block ml-1 cursor-help text-gray-600 opacity-70" size={14} />
-            </Tooltip>
-          </h3>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="border rounded-lg p-4">
-              <h3 className="text-lg font-medium text-blue-800 mb-3">
-                Male-Associated Terms
-                <Tooltip text="Terms that are more commonly associated with male professors or receive higher attention when evaluating men.">
-                  <HelpCircle className="inline-block ml-1 cursor-help text-blue-600 opacity-70" size={14} />
-                </Tooltip>
-              </h3>
-              <div className="flex flex-wrap gap-2">
-                {biasAnalysis.analysis_results.top_male_terms.map(([term], index) => (
-                  <div 
-                    key={`male-${term}`} 
-                    className="px-3 py-1 bg-blue-50 text-blue-700 rounded-full text-sm"
-                    style={{ opacity: 1 - (index * 0.05) }}
-                  >
-                    {term}
-                  </div>
-                ))}
-                {biasAnalysis.analysis_results.top_male_terms.length === 0 && (
-                  <p className="text-gray-500 italic">No significant male-associated terms identified</p>
-                )}
-              </div>
-            </div>
-            
-            <div className="border rounded-lg p-4">
-              <h3 className="text-lg font-medium text-pink-800 mb-3">
-                Female-Associated Terms
-                <Tooltip text="Terms that are more commonly associated with female professors or receive higher attention when evaluating women.">
-                  <HelpCircle className="inline-block ml-1 cursor-help text-pink-600 opacity-70" size={14} />
-                </Tooltip>
-              </h3>
-              <div className="flex flex-wrap gap-2">
-                {biasAnalysis.analysis_results.top_female_terms.map(([term], index) => (
-                  <div 
-                    key={`female-${term}`} 
-                    className="px-3 py-1 bg-pink-50 text-pink-700 rounded-full text-sm"
-                    style={{ opacity: 1 - (index * 0.05) }}
-                  >
-                    {term}
-                  </div>
-                ))}
-                {biasAnalysis.analysis_results.top_female_terms.length === 0 && (
-                  <p className="text-gray-500 italic">No significant female-associated terms identified</p>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
+        </div>        
       </div>
       
       {/* Recommendations */}
