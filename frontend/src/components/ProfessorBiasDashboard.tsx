@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
-import { Loader2, AlertCircle, Info, Lightbulb } from 'lucide-react';
+import { Loader2, AlertCircle, Info, Lightbulb, HelpCircle } from 'lucide-react';
 import { BiasExplainer } from './BiasExplainer';
 
 interface BiasAnalysisResult {
@@ -41,6 +41,19 @@ export const ProfessorBiasDashboard: React.FC<ProfessorBiasDashboardProps> = ({
   className = ''
 }) => {
   const [showExplainer, setShowExplainer] = useState(false);
+
+  // Tooltip component for consistent styling
+  const Tooltip = ({ children, text }: { children: React.ReactNode, text: string }) => {
+    return (
+      <div className="relative group inline-block">
+        {children}
+        <div className="absolute z-10 bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 text-sm font-medium text-white bg-gray-900 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-300 w-64 shadow-lg pointer-events-none">
+          {text}
+          <div className="absolute top-full left-1/2 transform -translate-x-1/2 border-t-4 border-l-4 border-r-4 border-gray-900 border-r-transparent border-l-transparent"></div>
+        </div>
+      </div>
+    );
+  };
 
   // Fetch bias analysis data from our new endpoint
   const { data: biasAnalysis, isLoading, isError, error } = useQuery<BiasAnalysisResult>({
@@ -133,11 +146,21 @@ export const ProfessorBiasDashboard: React.FC<ProfessorBiasDashboardProps> = ({
     <div className={`space-y-8 ${className}`}>
       {/* Overall Bias Score Card */}
       <div className="bg-white rounded-lg shadow-lg p-6">
-        <h2 className="text-xl font-semibold text-gray-900 mb-4">Gender Bias Analysis Summary</h2>
+        <h2 className="text-xl font-semibold text-gray-900 mb-4">
+          Gender Bias Analysis Summary
+          <Tooltip text="This analysis uses our LSTM model to identify potential gender bias patterns in student comments about your teaching.">
+            <HelpCircle className="inline-block ml-2 cursor-help text-gray-400" size={16} />
+          </Tooltip>
+        </h2>
         
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
           <div className={`rounded-lg p-4 ${getBiasLevelClass(analysisResults.overall_bias_score)}`}>
-            <div className="font-semibold mb-1">Overall Bias Score</div>
+            <div className="font-semibold mb-1">
+              Overall Bias Score
+              <Tooltip text="Measures how language patterns in comments may reflect gendered expectations. Positive values suggest male-associated language patterns, negative suggest female-associated patterns.">
+                <HelpCircle className="inline-block ml-1 cursor-help text-inherit opacity-70" size={14} />
+              </Tooltip>
+            </div>
             <div className="text-2xl font-bold">
               {analysisResults.overall_bias_score.toFixed(2)}
             </div>
@@ -145,7 +168,12 @@ export const ProfessorBiasDashboard: React.FC<ProfessorBiasDashboardProps> = ({
           </div>
           
           <div className={`rounded-lg p-4 ${getBiasLevelClass(analysisResults.positive_comments_bias_score)}`}>
-            <div className="font-semibold mb-1">Positive Comments Bias</div>
+            <div className="font-semibold mb-1">
+              Positive Comments Bias
+              <Tooltip text="Shows gender bias specifically in positive evaluations. Research shows different language is often used when praising male vs. female professors.">
+                <HelpCircle className="inline-block ml-1 cursor-help text-inherit opacity-70" size={14} />
+              </Tooltip>
+            </div>
             <div className="text-2xl font-bold">
               {analysisResults.positive_comments_bias_score.toFixed(2)}
             </div>
@@ -153,7 +181,12 @@ export const ProfessorBiasDashboard: React.FC<ProfessorBiasDashboardProps> = ({
           </div>
           
           <div className={`rounded-lg p-4 ${getBiasLevelClass(analysisResults.negative_comments_bias_score)}`}>
-            <div className="font-semibold mb-1">Negative Comments Bias</div>
+            <div className="font-semibold mb-1">
+              Negative Comments Bias
+              <Tooltip text="Shows gender bias specifically in critical evaluations. Different standards are often applied when criticizing professors of different genders.">
+                <HelpCircle className="inline-block ml-1 cursor-help text-inherit opacity-70" size={14} />
+              </Tooltip>
+            </div>
             <div className="text-2xl font-bold">
               {analysisResults.negative_comments_bias_score.toFixed(2)}
             </div>
@@ -167,7 +200,12 @@ export const ProfessorBiasDashboard: React.FC<ProfessorBiasDashboardProps> = ({
               <Info size={20} className="mr-2 text-indigo-600 flex-shrink-0 mt-0.5" />
               <div>
                 <p className="text-indigo-700">
-                  <span className="font-medium">Discipline Context:</span> In {biasAnalysis.discipline}, there is a
+                  <span className="font-medium">
+                    Discipline Context
+                    <Tooltip text="This provides context about how your discipline compares to the institutional average. Some disciplines show larger gender disparities in ratings.">
+                      <HelpCircle className="inline-block ml-1 cursor-help text-indigo-600 opacity-70" size={14} />
+                    </Tooltip>:
+                  </span> In {biasAnalysis.discipline}, there is a
                   <strong className={disciplineContext.gap > 0 ? ' text-blue-700' : ' text-pink-700'}>
                     {' '}{Math.abs(disciplineContext.gap).toFixed(2)} rating gap 
                   </strong> favoring {disciplineContext.gap > 0 ? 'male' : 'female'} professors.
@@ -196,11 +234,21 @@ export const ProfessorBiasDashboard: React.FC<ProfessorBiasDashboardProps> = ({
       
       {/* Gendered Terms Analysis */}
       <div className="bg-white rounded-lg shadow-lg p-6">
-        <h2 className="text-xl font-semibold text-gray-900 mb-4">Gendered Language Analysis</h2>
+        <h2 className="text-xl font-semibold text-gray-900 mb-4">
+          Gendered Language Analysis
+          <Tooltip text="These are terms that the LSTM model identified as having significant gender associations in your student evaluations.">
+            <HelpCircle className="inline-block ml-2 cursor-help text-gray-400" size={16} />
+          </Tooltip>
+        </h2>
         
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="border rounded-lg p-4">
-            <h3 className="text-lg font-medium text-blue-800 mb-3">Male-Associated Terms</h3>
+            <h3 className="text-lg font-medium text-blue-800 mb-3">
+              Male-Associated Terms
+              <Tooltip text="Terms that are more commonly associated with male professors or receive higher attention when evaluating men. These often focus on personality, humor, or entertainment value.">
+                <HelpCircle className="inline-block ml-1 cursor-help text-blue-600 opacity-70" size={14} />
+              </Tooltip>
+            </h3>
             <div className="flex flex-wrap gap-2">
               {biasAnalysis.analysis_results.top_male_terms.map(([term], index) => (
                 <div 
@@ -218,7 +266,12 @@ export const ProfessorBiasDashboard: React.FC<ProfessorBiasDashboardProps> = ({
           </div>
           
           <div className="border rounded-lg p-4">
-            <h3 className="text-lg font-medium text-pink-800 mb-3">Female-Associated Terms</h3>
+            <h3 className="text-lg font-medium text-pink-800 mb-3">
+              Female-Associated Terms
+              <Tooltip text="Terms that are more commonly associated with female professors or receive higher attention when evaluating women. These often focus on competence, organization, and teaching skills.">
+                <HelpCircle className="inline-block ml-1 cursor-help text-pink-600 opacity-70" size={14} />
+              </Tooltip>
+            </h3>
             <div className="flex flex-wrap gap-2">
               {biasAnalysis.analysis_results.top_female_terms.map(([term], index) => (
                 <div 
@@ -240,7 +293,12 @@ export const ProfessorBiasDashboard: React.FC<ProfessorBiasDashboardProps> = ({
       {/* Recommendations */}
       {biasAnalysis.recommendations.length > 0 && (
         <div className="bg-white rounded-lg shadow-lg p-6">
-          <h2 className="text-xl font-semibold text-gray-900 mb-4">AI-Generated Recommendations</h2>
+          <h2 className="text-xl font-semibold text-gray-900 mb-4">
+            AI-Generated Recommendations
+            <Tooltip text="These recommendations are generated based on the bias patterns detected in your student evaluations and research on gender bias in higher education.">
+              <HelpCircle className="inline-block ml-2 cursor-help text-gray-400" size={16} />
+            </Tooltip>
+          </h2>
           
           <div className="space-y-4">
             {biasAnalysis.recommendations.map((rec, index) => (
@@ -283,6 +341,9 @@ export const ProfessorBiasDashboard: React.FC<ProfessorBiasDashboardProps> = ({
       <div className="bg-white rounded-lg shadow-lg p-6">
         <h2 className="text-xl font-semibold text-gray-900 mb-4">
           Interactive Comment Analysis
+          <Tooltip text="This tool allows you to analyze individual comments to understand how our AI model detects gender bias in language patterns.">
+            <HelpCircle className="inline-block ml-2 cursor-help text-gray-400" size={16} />
+          </Tooltip>
         </h2>
         
         {showExplainer ? (

@@ -6,27 +6,45 @@ from collections import defaultdict, Counter
 import os
 import json
 
-from data_processing.gender_assignment import MALE_KEYWORDS, FEMALE_KEYWORDS
+# Define lexicons for different types of descriptors commonly used in evaluations
+# Research shows these patterns differ by gender in evaluations
+PERSONALITY_ENTERTAINMENT_DESCRIPTORS = {
+    'funny', 'cool', 'entertaining', 'hilarious', 'enjoyable', 'awesome', 'amazing', 'fun', 
+    'interesting', 'engaging', 'enthusiastic', 'charismatic', 'energetic', 'charming', 'witty',
+    'personable', 'caring', 'friendly', 'nice', 'sweet', 'kind', 'relatable', 'approachable',
+    'easygoing', 'understanding', 'relaxed', 'cheerful', 'excited', 'passionate', 'dynamic',
+    'humorous', 'lively', 'animated', 'captivating', 'warm', 'delightful', 'joy', 'pleasant'
+}
+
+COMPETENCE_DESCRIPTORS = {
+    'knowledgeable', 'smart', 'intelligent', 'brilliant', 'expert', 'competent', 'professional',
+    'organized', 'prepared', 'thorough', 'clear', 'concise', 'rigorous', 'detailed', 'accurate', 
+    'analytical', 'precise', 'effective', 'efficient', 'informative', 'helpful', 'insightful',
+    'logical', 'methodical', 'research', 'scholarly', 'skillful', 'structured', 'comprehensive', 
+    'experienced', 'qualified', 'educated', 'sharp', 'astute', 'credible', 'capable', 'practical'
+}
+
+# Recognize explicit gendered terms for minimal reference support
+EXPLICIT_GENDERED_TERMS = {
+    'male': {'he', 'him', 'his', 'himself', 'mr', 'sir', 'man', 'men', 'guy', 'guys', 'dude', 'father', 'dad'},
+    'female': {'she', 'her', 'hers', 'herself', 'ms', 'mrs', 'miss', 'madam', 'woman', 'women', 'gal', 'lady', 'ladies', 'mother', 'mom'}
+}
 
 
 class GenderBiasExplainer:
-    def __init__(self, model, vocab, male_terms=None, female_terms=None):
+    def __init__(self, model, vocab):
         """
         Initialize an explainer for gender bias in LSTM attention
         
         Args:
             model: trained LSTM model with attention
             vocab: vocabulary dictionary (word to index)
-            male_terms: list of male-associated terms (defaults to MALE_KEYWORDS)
-            female_terms: list of female-associated terms (defaults to FEMALE_KEYWORDS)
         """
         self.model = model
         self.vocab = vocab
         self.inv_vocab = {v: k for k, v in vocab.items()}
-        self.male_terms = set(male_terms or MALE_KEYWORDS)
-        self.female_terms = set(female_terms or FEMALE_KEYWORDS)
         self.device = next(model.parameters()).device
-        
+                
         # Load discipline gender gaps from the database if available
         self.discipline_gender_gaps = self._load_discipline_gender_gaps()
         
@@ -36,7 +54,7 @@ class GenderBiasExplainer:
             # Try to import Django utilities
             from django.conf import settings
             import django
-            os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'backend.settings')
+            os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'faireval.settings')
             django.setup()
             
             from api.utils import calculate_gender_discipline_heatmap
@@ -110,15 +128,15 @@ class GenderBiasExplainer:
         if return_attention_only:
             return attn_weights
         
-        # Analyze gender bias in attention weights
-        gender_bias_data = self._analyze_gender_attention(tokens, attn_weights)
+        # Analyze gender bias in attention weights with enhanced descriptor patterns
+        gender_bias_data = self._analyze_gender_patterns(text, tokens, attn_weights)
         
         explanation = {
             'prediction': prediction,
             'confidence': confidence,
             'tokens': tokens,
             'attention': attn_weights.tolist(),
-            'gender_bias': gender_bias_data
+            'gender_bias': gender_bias_data,
         }
         
         # Add discipline context if available
@@ -136,57 +154,128 @@ class GenderBiasExplainer:
             
         return explanation
         
-    def _analyze_gender_attention(self, tokens, attention_weights):
-        """Analyze how attention distributes across gender terms"""
-        gender_markers = {'male': [], 'female': [], 'neutral': []}
+    def _analyze_gender_patterns(self, text, tokens, attention_weights):
+        """
+        Analyze gendered patterns in evaluation text, including descriptor types and sentiment
+        """
+        # Categorize tokens by descriptor type
+        descriptor_categories = {
+            'personality_entertainment': [], 
+            'competence': [], 
+            'explicit_male': [], 
+            'explicit_female': [], 
+            'other': []
+        }
         
+        # Associate tokens with categories
         for i, token in enumerate(tokens):
-            if token.lower() in self.male_terms:
-                gender_markers['male'].append((i, token, attention_weights[i]))
-            elif token.lower() in self.female_terms:
-                gender_markers['female'].append((i, token, attention_weights[i]))
+            token_lower = token.lower()
+            if token_lower in PERSONALITY_ENTERTAINMENT_DESCRIPTORS:
+                descriptor_categories['personality_entertainment'].append((i, token, attention_weights[i]))
+            elif token_lower in COMPETENCE_DESCRIPTORS:
+                descriptor_categories['competence'].append((i, token, attention_weights[i]))
+            elif token_lower in EXPLICIT_GENDERED_TERMS['male']:
+                descriptor_categories['explicit_male'].append((i, token, attention_weights[i]))
+            elif token_lower in EXPLICIT_GENDERED_TERMS['female']:
+                descriptor_categories['explicit_female'].append((i, token, attention_weights[i]))
             else:
-                gender_markers['neutral'].append((i, token, attention_weights[i]))
-                
-        # Calculate aggregated attention by gender category
-        male_attention = sum(w for _, _, w in gender_markers['male']) if gender_markers['male'] else 0
-        female_attention = sum(w for _, _, w in gender_markers['female']) if gender_markers['female'] else 0
-        neutral_attention = sum(w for _, _, w in gender_markers['neutral']) if gender_markers['neutral'] else 0
+                descriptor_categories['other'].append((i, token, attention_weights[i]))
         
-        total_attention = male_attention + female_attention + neutral_attention
+        # Calculate attention by category
+        category_attention = {}
+        for category, items in descriptor_categories.items():
+            category_attention[category] = sum(w for _, _, w in items) if items else 0
+        
+        # Calculate total attention for normalization
+        total_attention = sum(category_attention.values())
         if total_attention == 0:
             total_attention = 1  # Avoid division by zero
             
-        male_attention_pct = (male_attention / total_attention) * 100
-        female_attention_pct = (female_attention / total_attention) * 100
-        neutral_attention_pct = (neutral_attention / total_attention) * 100
+        # Calculate percentages
+        category_attention_pct = {
+            k: (v / total_attention) * 100 
+            for k, v in category_attention.items()
+        }
         
-        # Calculate bias score (-1 to 1, positive means male bias)
-        total_gendered_attention = male_attention + female_attention
-        bias_score = 0
-        if total_gendered_attention > 0:
-            bias_score = (male_attention - female_attention) / total_gendered_attention
         
-        # Find top attended terms by gender
-        top_male_terms = sorted(gender_markers['male'], key=lambda x: x[2], reverse=True)[:5]
-        top_female_terms = sorted(gender_markers['female'], key=lambda x: x[2], reverse=True)[:5]
-        top_neutral_terms = sorted(gender_markers['neutral'], key=lambda x: x[2], reverse=True)[:5]
+        # Calculate descriptor type bias - positive values indicate more focus on personality/entertainment
+        # (typically associated with male professor evaluations) versus competence (female professors)
+        pers_ent_weight = category_attention['personality_entertainment']
+        comp_weight = category_attention['competence']
+        
+        descriptor_bias_score = 0
+        if (pers_ent_weight + comp_weight) > 0:
+            descriptor_bias_score = (pers_ent_weight - comp_weight) / (pers_ent_weight + comp_weight)
+        
+        # Calculate explicit gender bias - positive means male, negative means female
+        explicit_gender_bias = 0
+        total_explicit = category_attention['explicit_male'] + category_attention['explicit_female']
+        if total_explicit > 0:
+            explicit_gender_bias = (category_attention['explicit_male'] - category_attention['explicit_female']) / total_explicit
+            
+        # Calculate overall bias score - weighted combination of descriptor type bias and explicit gender bias
+        bias_score = 0.7 * descriptor_bias_score + 0.3 * explicit_gender_bias
+        
+        # Find top attended terms by category
+        top_terms_by_category = {}
+        for category, items in descriptor_categories.items():
+            top_terms_by_category[category] = sorted(items, key=lambda x: x[2], reverse=True)[:5]
+        
+        # Create interpretation of the bias
+        interpretation = self._interpret_gender_bias(
+            descriptor_bias_score, 
+            explicit_gender_bias, 
+            category_attention_pct
+        )
         
         return {
-            'male_terms': gender_markers['male'],
-            'female_terms': gender_markers['female'],
-            'neutral_terms': gender_markers['neutral'],
-            'male_attention_total': male_attention,
-            'female_attention_total': female_attention,
-            'neutral_attention_total': neutral_attention,
-            'male_attention_pct': male_attention_pct,
-            'female_attention_pct': female_attention_pct,
-            'neutral_attention_pct': neutral_attention_pct,
+            'descriptor_categories': descriptor_categories,
+            'category_attention': category_attention,
+            'category_attention_pct': category_attention_pct,
+            'descriptor_bias_score': descriptor_bias_score,
+            'explicit_gender_bias': explicit_gender_bias,
             'bias_score': bias_score,
-            'top_male_terms': top_male_terms,
-            'top_female_terms': top_female_terms,
-            'top_neutral_terms': top_neutral_terms
+            'top_terms_by_category': top_terms_by_category,
+            'interpretation': interpretation
         }
+    
+    def _interpret_gender_bias(self, descriptor_bias, explicit_bias, attention_pct):
+        """Generate interpretation of the detected gender bias patterns"""
+        # Determine bias direction and strength
+        abs_descriptor_bias = abs(descriptor_bias)
+        descriptor_bias_dir = "personality/entertainment-focused" if descriptor_bias > 0 else "competence-focused"
+        descriptor_strength = "strong" if abs_descriptor_bias > 0.5 else "moderate" if abs_descriptor_bias > 0.2 else "weak"
+        
+        # Calculate combined sentiment for different descriptor types
+        pers_ent_pct = attention_pct['personality_entertainment']
+        competence_pct = attention_pct['competence']
+        
+        # Put interpretation together
+        interpretation = []
+        
+        # Analyze balance between descriptor categories
+        if abs_descriptor_bias > 0.2:
+            if descriptor_bias > 0:
+                interpretation.append(
+                    f"This evaluation shows a {descriptor_strength} focus on personality and entertainment qualities "
+                    f"({pers_ent_pct:.1f}% of attention) versus competence ({competence_pct:.1f}% of attention), "
+                    f"a pattern more commonly observed in evaluations of male professors."
+                )
+            else:
+                interpretation.append(
+                    f"This evaluation shows a {descriptor_strength} focus on competence and professional qualities "
+                    f"({competence_pct:.1f}% of attention) versus personality ({pers_ent_pct:.1f}% of attention), "
+                    f"a pattern more commonly observed in evaluations of female professors."
+                )
+        
+        # Comment on explicit gender references if significant
+        if abs(explicit_bias) > 0.3:
+            explicit_gender = "male" if explicit_bias > 0 else "female"
+            interpretation.append(
+                f"There are significant explicit references to {explicit_gender} gender in this evaluation."
+            )
+        
+        return interpretation
     
     def _calculate_attention_gap_correlation(self, attention_bias_score, rating_gap):
         """Calculate if attention bias aligns with rating gap in discipline"""
@@ -233,15 +322,20 @@ class GenderBiasExplainer:
         # Create figure
         plt.figure(figsize=(14, 6))
         
-        # Color-coding for gender terms
+        # Enhanced color-coding for different descriptor categories
         colors = []
-        for token in tokens:
-            if token.lower() in self.male_terms:
-                colors.append('blue')
-            elif token.lower() in self.female_terms:
-                colors.append('red')
+        for i, token in enumerate(tokens):
+            token_lower = token.lower()
+            if token_lower in PERSONALITY_ENTERTAINMENT_DESCRIPTORS:
+                colors.append('purple')  # Personality/entertainment descriptors
+            elif token_lower in COMPETENCE_DESCRIPTORS:
+                colors.append('orange')  # Competence descriptors
+            elif token_lower in EXPLICIT_GENDERED_TERMS['male']:
+                colors.append('blue')    # Explicitly male terms
+            elif token_lower in EXPLICIT_GENDERED_TERMS['female']:
+                colors.append('red')     # Explicitly female terms
             else:
-                colors.append('gray')
+                colors.append('gray')    # Neutral/other terms
         
         # Plot attention weights
         plt.bar(range(len(tokens)), attention, color=colors)
@@ -249,10 +343,27 @@ class GenderBiasExplainer:
         plt.xlabel('Tokens')
         plt.ylabel('Attention Weight')
         
+        bias_score = explanation['gender_bias']['bias_score']
+        descriptor_bias = explanation['gender_bias']['descriptor_bias_score']
+        
         title = f"Prediction: {explanation['prediction']} (Confidence: {explanation['confidence']:.2f})\n"
-        title += f"Gender Bias Score: {explanation['gender_bias']['bias_score']:.2f} "
-        title += ("(Male Biased)" if explanation['gender_bias']['bias_score'] > 0.2 else 
-                 "(Female Biased)" if explanation['gender_bias']['bias_score'] < -0.2 else "(Neutral)")
+        title += f"Gender Bias Score: {bias_score:.2f} "
+        
+        if bias_score > 0.2:
+            title += "(Male-pattern language)"
+        elif bias_score < -0.2:
+            title += "(Female-pattern language)"
+        else:
+            title += "(Relatively neutral)"
+            
+        title += f"\nDescriptor Bias: {descriptor_bias:.2f} "
+        
+        if descriptor_bias > 0.2:
+            title += "(Personality/entertainment focused)"
+        elif descriptor_bias < -0.2:
+            title += "(Competence focused)"
+        else:
+            title += "(Balanced descriptors)"
         
         # Add discipline context if available
         if 'discipline_context' in explanation:
@@ -266,9 +377,11 @@ class GenderBiasExplainer:
         # Add legend
         from matplotlib.patches import Patch
         legend_elements = [
-            Patch(facecolor='blue', label='Male Terms'),
-            Patch(facecolor='red', label='Female Terms'),
-            Patch(facecolor='gray', label='Neutral Terms')
+            Patch(facecolor='purple', label='Personality/Entertainment'),
+            Patch(facecolor='orange', label='Competence'),
+            Patch(facecolor='blue', label='Explicit Male'),
+            Patch(facecolor='red', label='Explicit Female'),
+            Patch(facecolor='gray', label='Other Terms')
         ]
         plt.legend(handles=legend_elements)
         
@@ -298,56 +411,140 @@ class GenderBiasExplainer:
             
         # Aggregate results
         overall_bias_score = np.mean([r['gender_bias']['bias_score'] for r in results])
+        descriptor_bias_score = np.mean([r['gender_bias']['descriptor_bias_score'] for r in results])
         pos_results = [r for r in results if r['prediction'] == 'Positive']
         neg_results = [r for r in results if r['prediction'] == 'Negative']
         
         pos_bias_score = np.mean([r['gender_bias']['bias_score'] for r in pos_results]) if pos_results else 0
         neg_bias_score = np.mean([r['gender_bias']['bias_score'] for r in neg_results]) if neg_results else 0
         
-        # Get most attended gendered terms
-        all_male_terms = []
-        all_female_terms = []
+        # Analyze descriptor patterns by sentiment
+        pos_descriptor_bias = np.mean([r['gender_bias']['descriptor_bias_score'] for r in pos_results]) if pos_results else 0
+        neg_descriptor_bias = np.mean([r['gender_bias']['descriptor_bias_score'] for r in neg_results]) if neg_results else 0
         
+        # Collect terms by category
+        category_terms = defaultdict(list)
         for r in results:
-            male_terms = [(term, weight) for _, term, weight in r['gender_bias']['male_terms']]
-            female_terms = [(term, weight) for _, term, weight in r['gender_bias']['female_terms']]
-            all_male_terms.extend(male_terms)
-            all_female_terms.extend(female_terms)
+            for category, terms in r['gender_bias']['descriptor_categories'].items():
+                category_terms[category].extend([(term, weight) for _, term, weight in terms])
             
-        # Count occurrences of gendered terms
-        male_term_counter = Counter([term.lower() for term, _ in all_male_terms])
-        female_term_counter = Counter([term.lower() for term, _ in all_female_terms])
-        
-        # Calculate average attention per term
-        male_term_avg_attn = defaultdict(list)
-        female_term_avg_attn = defaultdict(list)
-        
-        for term, weight in all_male_terms:
-            male_term_avg_attn[term.lower()].append(weight)
-        for term, weight in all_female_terms:
-            female_term_avg_attn[term.lower()].append(weight)
+        # Process term statistics by category
+        category_stats = {}
+        for category, terms in category_terms.items():
+            if not terms:
+                category_stats[category] = {'top_terms': []}
+                continue
+                
+            # Count occurrences
+            term_counter = Counter([term.lower() for term, _ in terms])
             
-        male_term_avg = {term: sum(weights) / len(weights) 
-                         for term, weights in male_term_avg_attn.items()}
-        female_term_avg = {term: sum(weights) / len(weights) 
-                           for term, weights in female_term_avg_attn.items()}
+            # Calculate average attention per term
+            term_avg_attn = defaultdict(list)
+            for term, weight in terms:
+                term_avg_attn[term.lower()].append(weight)
+                
+            term_avg = {term: sum(weights) / len(weights) 
+                       for term, weights in term_avg_attn.items()}
+            
+            # Calculate relevance score
+            term_relevance = {term: count * term_avg.get(term, 0) 
+                             for term, count in term_counter.items()}
+            
+            # Get top terms by relevance
+            top_terms = sorted(term_relevance.items(), key=lambda x: x[1], reverse=True)[:10]
+            
+            category_stats[category] = {
+                'top_terms': top_terms,
+                'total_occurrences': len(terms),
+                'unique_terms': len(term_counter)
+            }
         
-        # Sort by frequency * avg_attention for relevance
-        male_term_relevance = {term: count * male_term_avg.get(term, 0) 
-                              for term, count in male_term_counter.items()}
-        female_term_relevance = {term: count * female_term_avg.get(term, 0) 
-                                for term, count in female_term_counter.items()}
-        
-        top_male_terms = sorted(male_term_relevance.items(), key=lambda x: x[1], reverse=True)[:10]
-        top_female_terms = sorted(female_term_relevance.items(), key=lambda x: x[1], reverse=True)[:10]
+        # Generate insights based on the analysis
+        insights = self._generate_batch_insights(
+            overall_bias_score, 
+            descriptor_bias_score,
+            pos_bias_score, 
+            neg_bias_score,
+            pos_descriptor_bias,
+            neg_descriptor_bias,
+            category_stats,
+        )
         
         return {
             'overall_bias_score': overall_bias_score,
+            'descriptor_bias_score': descriptor_bias_score,
             'positive_comments_bias_score': pos_bias_score,
             'negative_comments_bias_score': neg_bias_score,
+            'positive_descriptor_bias': pos_descriptor_bias,
+            'negative_descriptor_bias': neg_descriptor_bias,
             'comment_count': len(results),
             'positive_count': len(pos_results),
             'negative_count': len(neg_results),
-            'top_male_terms': top_male_terms,
-            'top_female_terms': top_female_terms
+            'category_stats': category_stats,
+            'insights': insights
         }
+        
+    def _generate_batch_insights(self, overall_bias, descriptor_bias, pos_bias, neg_bias, 
+                                pos_descriptor_bias, neg_descriptor_bias, category_stats):
+        """Generate insights about gender bias patterns in the batch of comments"""
+        insights = []
+        
+        # Overall bias pattern
+        if abs(overall_bias) > 0.15:
+            direction = "masculine-pattern language" if overall_bias > 0 else "feminine-pattern language"
+            insights.append(f"Overall, these comments tend to use {direction}.")
+            
+        # Descriptor type patterns
+        if abs(descriptor_bias) > 0.15:
+            if descriptor_bias > 0:
+                insights.append(
+                    "These evaluations focus more on personality and entertainment value than competence, "
+                    "a pattern typically seen more in evaluations of male professors."
+                )
+            else:
+                insights.append(
+                    "These evaluations focus more on competence and qualifications than personality, "
+                    "a pattern typically seen more in evaluations of female professors."
+                )
+                
+        # Compare positive vs negative comments
+        if abs(pos_bias - neg_bias) > 0.2:
+            if pos_bias > neg_bias:
+                insights.append(
+                    "Positive comments show stronger masculine-pattern language than negative comments, "
+                    "suggesting potential gender bias in how praise is expressed."
+                )
+            else:
+                insights.append(
+                    "Negative comments show stronger masculine-pattern language than positive comments, "
+                    "suggesting potential gender bias in how criticism is expressed."
+                )
+                
+        # Compare descriptor patterns in positive vs negative comments
+        if abs(pos_descriptor_bias - neg_descriptor_bias) > 0.2:
+            if pos_descriptor_bias > neg_descriptor_bias:
+                insights.append(
+                    "Positive comments focus more on personality and entertainment qualities, "
+                    "while negative comments focus more on competence and qualifications."
+                )
+            else:
+                insights.append(
+                    "Negative comments focus more on personality and entertainment qualities, "
+                    "while positive comments focus more on competence and qualifications."
+                )
+        
+        # Look at most common terms
+        if (category_stats['personality_entertainment']['total_occurrences'] > 
+            category_stats['competence']['total_occurrences'] * 2):
+            insights.append(
+                "These comments heavily emphasize personality and entertainment qualities, "
+                "with much less focus on competence and qualifications."
+            )
+        elif (category_stats['competence']['total_occurrences'] > 
+              category_stats['personality_entertainment']['total_occurrences'] * 2):
+            insights.append(
+                "These comments heavily emphasize competence and qualifications, "
+                "with much less focus on personality and entertainment qualities."
+            )
+            
+        return insights

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import axios from 'axios';
-import { Loader2, AlertCircle, Info } from 'lucide-react';
+import { Loader2, AlertCircle, Info, HelpCircle } from 'lucide-react';
 
 interface DisciplineData {
   discipline_ratings: Array<{
@@ -9,6 +9,7 @@ interface DisciplineData {
   }>;
 }
 
+// Updated interface to match our new structure
 interface AttentionData {
   prediction: string;
   confidence: number;
@@ -16,17 +17,37 @@ interface AttentionData {
   attention: number[];
   gender_bias: {
     bias_score: number;
-    male_attention_total: number;
-    female_attention_total: number;
-    neutral_attention_total: number;
-    male_attention_pct: number;
-    female_attention_pct: number;
-    neutral_attention_pct: number;
-    male_terms: [number, string, number][];
-    female_terms: [number, string, number][];
-    top_male_terms: [number, string, number][];
-    top_female_terms: [number, string, number][];
-    top_neutral_terms: [number, string, number][];
+    descriptor_bias_score: number;
+    explicit_gender_bias: number;
+    category_attention: {
+      personality_entertainment: number;
+      competence: number;
+      explicit_male: number;
+      explicit_female: number;
+      other: number;
+    };
+    category_attention_pct: {
+      personality_entertainment: number;
+      competence: number;
+      explicit_male: number;
+      explicit_female: number;
+      other: number;
+    };
+    descriptor_categories: {
+      personality_entertainment: [number, string, number][];
+      competence: [number, string, number][];
+      explicit_male: [number, string, number][];
+      explicit_female: [number, string, number][];
+      other: [number, string, number][];
+    };
+    top_terms_by_category: {
+      personality_entertainment: [number, string, number][];
+      competence: [number, string, number][];
+      explicit_male: [number, string, number][];
+      explicit_female: [number, string, number][];
+      other: [number, string, number][];
+    };
+    interpretation: string[];
   };
   discipline_context?: {
     discipline: string;
@@ -140,10 +161,46 @@ export const BiasExplainer: React.FC<BiasExplainerProps> = ({
     if (score < -0.1) return 'bg-pink-50 text-pink-600';
     return 'bg-gray-100 text-gray-800';
   };
+
+  // Function to get descriptor bias label
+  const getDescriptorBiasLabel = (score: number) => {
+    if (score > 0.3) return 'Strong focus on personality/entertainment';
+    if (score > 0.1) return 'Moderate focus on personality/entertainment';
+    if (score < -0.3) return 'Strong focus on competence/qualifications';
+    if (score < -0.1) return 'Moderate focus on competence/qualifications';
+    return 'Balanced descriptors';
+  };
+  
+  // Function to get descriptor bias color
+  const getDescriptorBiasColor = (score: number) => {
+    if (score > 0.3) return 'bg-purple-100 text-purple-800';
+    if (score > 0.1) return 'bg-purple-50 text-purple-600';
+    if (score < -0.3) return 'bg-orange-100 text-orange-800';
+    if (score < -0.1) return 'bg-orange-50 text-orange-600';
+    return 'bg-gray-100 text-gray-800';
+  };
+
+  // Tooltip component for consistent styling
+  const Tooltip = ({ children, text }: { children: React.ReactNode, text: string }) => {
+    return (
+      <div className="relative group inline-block">
+        {children}
+        <div className="absolute z-10 bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 text-sm font-medium text-white bg-gray-900 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-300 w-64 shadow-lg pointer-events-none">
+          {text}
+          <div className="absolute top-full left-1/2 transform -translate-x-1/2 border-t-4 border-l-4 border-r-4 border-gray-900 border-r-transparent border-l-transparent"></div>
+        </div>
+      </div>
+    );
+  };
   
   return (
     <div className={`bg-white rounded-lg shadow-md p-6 ${className}`}>
-      <h2 className="text-xl font-semibold text-gray-900 mb-6">Gender Bias Analysis in Comments</h2>
+      <h2 className="text-xl font-semibold text-gray-900 mb-6">
+        Gender Bias Analysis in Comments
+        <Tooltip text="This tool analyzes how language used in student evaluations might reflect gender bias through our LSTM model's attention patterns.">
+          <HelpCircle className="inline-block ml-2 cursor-help text-gray-400" size={16} />
+        </Tooltip>
+      </h2>
       
       <div className="space-y-4 mb-6">
         <div>
@@ -211,27 +268,47 @@ export const BiasExplainer: React.FC<BiasExplainerProps> = ({
       {explanation && !isPending && (
         <div className="space-y-6">
           {/* Sentiment prediction */}
-          <div className="flex items-center space-x-4">
+          <div className="flex items-center space-x-4 flex-wrap gap-2">
             <div className={`px-3 py-1 rounded-full text-sm font-medium ${
               explanation.prediction === 'Positive' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
             }`}>
               {explanation.prediction} ({(explanation.confidence * 100).toFixed(1)}%)
+              <Tooltip text="The overall sentiment prediction of our LSTM model, based on the text content.">
+                <HelpCircle className="inline-block ml-1 cursor-help text-inherit opacity-70" size={14} />
+              </Tooltip>
             </div>
             
             <div className={`px-3 py-1 rounded-full text-sm font-medium ${getBiasColor(explanation.gender_bias.bias_score)}`}>
               {getBiasLabel(explanation.gender_bias.bias_score)}
+              <Tooltip text="Overall gender bias score combines both descriptor patterns and explicit gendered terms. Positive values indicate male-associated patterns; negative values indicate female-associated patterns.">
+                <HelpCircle className="inline-block ml-1 cursor-help text-inherit opacity-70" size={14} />
+              </Tooltip>
+            </div>
+
+            <div className={`px-3 py-1 rounded-full text-sm font-medium ${getDescriptorBiasColor(explanation.gender_bias.descriptor_bias_score)}`}>
+              {getDescriptorBiasLabel(explanation.gender_bias.descriptor_bias_score)}
+              <Tooltip text="Research shows evaluations of male professors often focus on personality/entertainment, while female professors are evaluated more on competence/qualifications.">
+                <HelpCircle className="inline-block ml-1 cursor-help text-inherit opacity-70" size={14} />
+              </Tooltip>
             </div>
           </div>
           
           {/* Attention visualization */}
           <div>
-            <h3 className="text-lg font-medium text-gray-900 mb-3">Attention Visualization</h3>
+            <h3 className="text-lg font-medium text-gray-900 mb-3">
+              Attention Visualization
+              <Tooltip text="This shows which words the model pays most attention to when making its prediction. Words are color-coded by category and sized by attention weight.">
+                <HelpCircle className="inline-block ml-2 cursor-help text-gray-400" size={16} />
+              </Tooltip>
+            </h3>
             <div className="bg-gray-50 rounded-lg p-4 overflow-x-auto">
               <div className="flex flex-wrap gap-2 min-w-[640px]">
                 {explanation.tokens.map((token, i: number) => {
-                  // Determine if token is gendered
-                  const isMaleTerm = explanation.gender_bias.male_terms.some(t => t[0] === i);
-                  const isFemaleTerm = explanation.gender_bias.female_terms.some(t => t[0] === i);
+                  // Determine token category from descriptor_categories
+                  const isPersonalityTerm = explanation.gender_bias.descriptor_categories.personality_entertainment.some(t => t[0] === i);
+                  const isCompetenceTerm = explanation.gender_bias.descriptor_categories.competence.some(t => t[0] === i);
+                  const isMaleTerm = explanation.gender_bias.descriptor_categories.explicit_male.some(t => t[0] === i);
+                  const isFemaleTerm = explanation.gender_bias.descriptor_categories.explicit_female.some(t => t[0] === i);
                   
                   // Calculate color intensity based on attention weight
                   const attentionWeight = explanation.attention[i];
@@ -241,6 +318,14 @@ export const BiasExplainer: React.FC<BiasExplainerProps> = ({
                   let bgColor = `rgba(209, 213, 219, ${attentionWeight * 3})`; // gray
                   let textColor = 'text-gray-900';
                   
+                  if (isPersonalityTerm) {
+                    bgColor = `rgba(147, 51, 234, ${attentionWeight * 3})`; // purple
+                    textColor = attentionWeight > 0.1 ? 'text-white' : 'text-purple-800';
+                  }
+                  if (isCompetenceTerm) {
+                    bgColor = `rgba(249, 115, 22, ${attentionWeight * 3})`; // orange
+                    textColor = attentionWeight > 0.1 ? 'text-white' : 'text-orange-800';
+                  }
                   if (isMaleTerm) {
                     bgColor = `rgba(59, 130, 246, ${attentionWeight * 3})`; // blue
                     textColor = attentionWeight > 0.1 ? 'text-white' : 'text-blue-800';
@@ -266,73 +351,112 @@ export const BiasExplainer: React.FC<BiasExplainerProps> = ({
             </div>
           </div>
           
-          {/* Gender attention distribution */}
+          {/* Category attention distribution */}
           <div>
-            <h3 className="text-lg font-medium text-gray-900 mb-3">Gender Attention Distribution</h3>
+            <h3 className="text-lg font-medium text-gray-900 mb-3">
+              Descriptor Categories Distribution
+              <Tooltip text="This breaks down the attention paid to different types of descriptors used in the evaluation. Research shows gendered patterns in which aspects of teaching are emphasized.">
+                <HelpCircle className="inline-block ml-2 cursor-help text-gray-400" size={16} />
+              </Tooltip>
+            </h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="p-4 rounded-lg bg-blue-50">
+              {/* Personality/Entertainment Terms */}
+              <div className="p-4 rounded-lg bg-purple-50">
                 <div className="flex justify-between items-center">
-                  <h4 className="font-medium text-blue-800">Male Terms</h4>
-                  <span className="text-xl font-bold text-blue-600">{explanation.gender_bias.male_attention_pct.toFixed(1)}%</span>
+                  <h4 className="font-medium text-purple-800">
+                    Personality/Entertainment
+                    <Tooltip text="Terms describing personality traits, humor, entertainment value, and rapport. These are typically more emphasized in male professor evaluations.">
+                      <HelpCircle className="inline-block ml-1 cursor-help text-purple-600 opacity-70" size={14} />
+                    </Tooltip>
+                  </h4>
+                  <span className="text-xl font-bold text-purple-600">
+                    {explanation.gender_bias.category_attention_pct.personality_entertainment.toFixed(1)}%
+                  </span>
+                </div>
+                <div className="mt-2">
+                  <div className="w-full bg-gray-200 rounded-full h-2.5">
+                    <div 
+                      className="bg-purple-600 h-2.5 rounded-full" 
+                      style={{ width: `${explanation.gender_bias.category_attention_pct.personality_entertainment}%` }}
+                    />
+                  </div>
+                </div>
+                <div className="mt-3 text-sm">
+                  <strong>Top terms:</strong> {
+                    explanation.gender_bias.top_terms_by_category.personality_entertainment?.length > 0 
+                      ? explanation.gender_bias.top_terms_by_category.personality_entertainment.map((t) => t[1]).join(', ') 
+                      : 'None'
+                  }
+                </div>
+              </div>
+              
+              {/* Competence Terms */}
+              <div className="p-4 rounded-lg bg-orange-50">
+                <div className="flex justify-between items-center">
+                  <h4 className="font-medium text-orange-800">
+                    Competence
+                    <Tooltip text="Terms describing professional competence, expertise, organization, and teaching skill. These are typically more emphasized in female professor evaluations.">
+                      <HelpCircle className="inline-block ml-1 cursor-help text-orange-600 opacity-70" size={14} />
+                    </Tooltip>
+                  </h4>
+                  <span className="text-xl font-bold text-orange-600">
+                    {explanation.gender_bias.category_attention_pct.competence.toFixed(1)}%
+                  </span>
+                </div>
+                <div className="mt-2">
+                  <div className="w-full bg-gray-200 rounded-full h-2.5">
+                    <div 
+                      className="bg-orange-600 h-2.5 rounded-full" 
+                      style={{ width: `${explanation.gender_bias.category_attention_pct.competence}%` }}
+                    />
+                  </div>
+                </div>
+                <div className="mt-3 text-sm">
+                  <strong>Top terms:</strong> {
+                    explanation.gender_bias.top_terms_by_category.competence?.length > 0 
+                      ? explanation.gender_bias.top_terms_by_category.competence.map((t) => t[1]).join(', ') 
+                      : 'None'
+                  }
+                </div>
+              </div>
+              
+              {/* Explicit Gendered Terms */}
+              <div className="p-4 rounded-lg bg-gray-50">
+                <div className="flex justify-between items-center">
+                  <h4 className="font-medium text-gray-800">
+                    Explicit Gender Terms
+                    <Tooltip text="Explicitly gendered words like pronouns (he/she) or gendered nouns. High attention on these terms can indicate gender may be influencing the evaluation.">
+                      <HelpCircle className="inline-block ml-1 cursor-help text-gray-600 opacity-70" size={14} />
+                    </Tooltip>
+                  </h4>
+                  <span className="text-xl font-bold text-gray-600">
+                    {(explanation.gender_bias.category_attention_pct.explicit_male + 
+                      explanation.gender_bias.category_attention_pct.explicit_female).toFixed(1)}%
+                  </span>
                 </div>
                 <div className="mt-2">
                   <div className="w-full bg-gray-200 rounded-full h-2.5">
                     <div 
                       className="bg-blue-600 h-2.5 rounded-full" 
-                      style={{ width: `${explanation.gender_bias.male_attention_pct}%` }}
+                      style={{ width: `${explanation.gender_bias.category_attention_pct.explicit_male}%` }}
                     />
-                  </div>
-                </div>
-                <div className="mt-3 text-sm">
-                  <strong>Top terms:</strong> {
-                    explanation.gender_bias.top_male_terms.length > 0 
-                      ? explanation.gender_bias.top_male_terms.map((t: [number, string, number]) => t[1]).join(', ') 
-                      : 'None'
-                  }
-                </div>
-              </div>
-              
-              <div className="p-4 rounded-lg bg-pink-50">
-                <div className="flex justify-between items-center">
-                  <h4 className="font-medium text-pink-800">Female Terms</h4>
-                  <span className="text-xl font-bold text-pink-600">{explanation.gender_bias.female_attention_pct.toFixed(1)}%</span>
-                </div>
-                <div className="mt-2">
-                  <div className="w-full bg-gray-200 rounded-full h-2.5">
                     <div 
-                      className="bg-pink-600 h-2.5 rounded-full" 
-                      style={{ width: `${explanation.gender_bias.female_attention_pct}%` }}
-                    />
-                  </div>
-                </div>
-                <div className="mt-3 text-sm">
-                  <strong>Top terms:</strong> {
-                    explanation.gender_bias.top_female_terms.length > 0 
-                      ? explanation.gender_bias.top_female_terms.map((t: [number, string, number]) => t[1]).join(', ') 
-                      : 'None'
-                  }
-                </div>
-              </div>
-              
-              <div className="p-4 rounded-lg bg-gray-50">
-                <div className="flex justify-between items-center">
-                  <h4 className="font-medium text-gray-800">Neutral Terms</h4>
-                  <span className="text-xl font-bold text-gray-600">{explanation.gender_bias.neutral_attention_pct.toFixed(1)}%</span>
-                </div>
-                <div className="mt-2">
-                  <div className="w-full bg-gray-200 rounded-full h-2.5">
-                    <div 
-                      className="bg-gray-500 h-2.5 rounded-full" 
-                      style={{ width: `${explanation.gender_bias.neutral_attention_pct}%` }}
+                      className="bg-pink-600 h-2.5 rounded-full mt-1" 
+                      style={{ width: `${explanation.gender_bias.category_attention_pct.explicit_female}%` }}
                     />
                   </div>
                 </div>
                 <div className="mt-3 text-sm text-gray-600">
-                  <strong>Top terms:</strong> {
-                    explanation.gender_bias.top_neutral_terms.length > 0 
-                      ? explanation.gender_bias.top_neutral_terms.slice(0, 3).map(t => t[1]).join(', ')
+                  <div><strong className="text-blue-800">Male:</strong> {
+                    explanation.gender_bias.top_terms_by_category.explicit_male?.length > 0 
+                      ? explanation.gender_bias.top_terms_by_category.explicit_male.map((t) => t[1]).join(', ')
                       : 'None'
-                  }
+                  }</div>
+                  <div><strong className="text-pink-800">Female:</strong> {
+                    explanation.gender_bias.top_terms_by_category.explicit_female?.length > 0 
+                      ? explanation.gender_bias.top_terms_by_category.explicit_female.map((t) => t[1]).join(', ')
+                      : 'None'
+                  }</div>
                 </div>
               </div>
             </div>
@@ -344,7 +468,12 @@ export const BiasExplainer: React.FC<BiasExplainerProps> = ({
               <div className="flex items-start space-x-2">
                 <Info size={20} className="flex-shrink-0 mt-1 text-indigo-500" />
                 <div>
-                  <h3 className="text-lg font-medium text-gray-900 mb-2">Disciplinary Context</h3>
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">
+                    Disciplinary Context
+                    <Tooltip text="This shows how your discipline compares to institutional averages in terms of gender rating gaps, and whether the language in this comment aligns with those patterns.">
+                      <HelpCircle className="inline-block ml-2 cursor-help text-gray-400" size={16} />
+                    </Tooltip>
+                  </h3>
                   <p className="mb-2">
                     In <strong>{explanation.discipline_context.discipline}</strong>, there is a 
                     <strong className={explanation.discipline_context.gender_rating_gap > 0 
@@ -370,45 +499,27 @@ export const BiasExplainer: React.FC<BiasExplainerProps> = ({
             </div>
           )}
           
-          {/* Bias implications */}
+          {/* AI Interpretation */}
           <div className="mt-6 border-t border-gray-200 pt-4">
-            <h3 className="text-lg font-medium text-gray-900 mb-3">Implications & Recommendations</h3>
+            <h3 className="text-lg font-medium text-gray-900 mb-3">
+              AI Interpretation
+              <Tooltip text="The model analyzes the overall patterns and provides interpretations of what the language patterns might indicate about potential bias.">
+                <HelpCircle className="inline-block ml-2 cursor-help text-gray-400" size={16} />
+              </Tooltip>
+            </h3>
             
-            {Math.abs(explanation.gender_bias.bias_score) > 0.2 ? (
+            {explanation.gender_bias.interpretation && explanation.gender_bias.interpretation.length > 0 ? (
               <div className="space-y-3">
-                <div className={`p-4 rounded-lg ${
-                  explanation.gender_bias.bias_score > 0 ? 'bg-blue-50' : 'bg-pink-50'
-                }`}>
-                  <p className={
-                    explanation.gender_bias.bias_score > 0 ? 'text-blue-800' : 'text-pink-800'
-                  }>
-                    <strong>Detected Bias:</strong> This comment shows significant 
-                    {explanation.gender_bias.bias_score > 0 ? ' male' : ' female'}-oriented language patterns 
-                    in sentiment evaluation.
-                  </p>
-                </div>
-                
-                <div className="bg-indigo-50 p-4 rounded-lg">
-                  <p className="text-indigo-800 font-medium mb-2">Recommendations:</p>
-                  <ul className="list-disc pl-5 space-y-1 text-indigo-800">
-                    <li>Consider if these language patterns reflect genuine teaching qualities or potential bias</li>
-                    <li>Be aware that attention focuses on gendered terms may influence sentiment assessments</li>
-                    {explanation.discipline_context && (
-                      <li>
-                        {explanation.discipline_context.correlation.alignment === 'aligned' 
-                          ? 'This comment reflects broader gender-based evaluation patterns in your discipline' 
-                          : 'This comment shows language patterns that run counter to typical evaluation patterns in your discipline'
-                        }
-                      </li>
-                    )}
-                  </ul>
-                </div>
+                {explanation.gender_bias.interpretation.map((interpretation, index) => (
+                  <div key={index} className="bg-indigo-50 p-4 rounded-lg">
+                    <p className="text-indigo-800">{interpretation}</p>
+                  </div>
+                ))}
               </div>
             ) : (
-              <div className="bg-green-50 p-4 rounded-lg">
-                <p className="text-green-800">
-                  <strong>Balanced Analysis:</strong> This comment shows relatively balanced language 
-                  without significant gender-based attention patterns.
+              <div className="bg-gray-50 p-4 rounded-lg">
+                <p className="text-gray-800">
+                  No specific pattern interpretation available.
                 </p>
               </div>
             )}
