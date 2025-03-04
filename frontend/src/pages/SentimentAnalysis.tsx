@@ -2,7 +2,6 @@ import { useAuth } from '../contexts/AuthContext';
 import { CommentSummaryDisplay } from '../components/CommentSummaryDisplay';
 import { WordCloudVisualization } from '../components/WordCloudVisualization';
 import { GenderSentimentVisualization } from '../components/GenderSentimentVisualization';
-import { TopicModelVisualization } from '../components/TopicModelVisualization';
 import { RecommendationDisplay } from '../components/RecommendationDisplay';
 import { BiasExplainer } from '../components/BiasExplainer';
 import { useQuery } from '@tanstack/react-query';
