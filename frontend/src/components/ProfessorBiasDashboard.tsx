@@ -9,11 +9,63 @@ interface BiasAnalysisResult {
   discipline: string;
   analysis_results: {
     overall_bias_score: number;
+    descriptor_bias_score: number;
     positive_comments_bias_score: number;
     negative_comments_bias_score: number;
     comment_count: number;
     positive_count: number;
     negative_count: number;
+    
+    // Enhanced descriptor categories
+    category_stats: {
+      intellect_achievement: {
+        top_terms: [string, number][];
+        total_occurrences: number;
+        unique_terms: number;
+      };
+      entertainment_authority: {
+        top_terms: [string, number][];
+        total_occurrences: number;
+        unique_terms: number;
+      };
+      competence_organization: {
+        top_terms: [string, number][];
+        total_occurrences: number;
+        unique_terms: number;
+      };
+      warmth_nurturing: {
+        top_terms: [string, number][];
+        total_occurrences: number;
+        unique_terms: number;
+      };
+      male_negative: {
+        top_terms: [string, number][];
+        total_occurrences: number;
+        unique_terms: number;
+      };
+      female_negative: {
+        top_terms: [string, number][];
+        total_occurrences: number;
+        unique_terms: number;
+      };
+      explicit_male: {
+        top_terms: [string, number][];
+        total_occurrences: number;
+        unique_terms: number;
+      };
+      explicit_female: {
+        top_terms: [string, number][];
+        total_occurrences: number;
+        unique_terms: number;
+      };
+      other: {
+        top_terms: [string, number][];
+        total_occurrences: number;
+        unique_terms: number;
+      };
+    };
+    
+    // Keep existing properties for backward compatibility
     top_male_terms: [string, number][];
     top_female_terms: [string, number][];
   };
@@ -235,56 +287,234 @@ export const ProfessorBiasDashboard: React.FC<ProfessorBiasDashboardProps> = ({
       {/* Gendered Terms Analysis */}
       <div className="bg-white rounded-lg shadow-lg p-6">
         <h2 className="text-xl font-semibold text-gray-900 mb-4">
-          Gendered Language Analysis
-          <Tooltip text="These are terms that the LSTM model identified as having significant gender associations in your student evaluations.">
+          Enhanced Gender Language Analysis
+          <Tooltip text="This visualization shows the specific categories of gendered language patterns identified in student evaluations, based on academic research about gender bias in teaching evaluations.">
             <HelpCircle className="inline-block ml-2 cursor-help text-gray-400" size={16} />
           </Tooltip>
         </h2>
         
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="border rounded-lg p-4">
-            <h3 className="text-lg font-medium text-blue-800 mb-3">
-              Male-Associated Terms
-              <Tooltip text="Terms that are more commonly associated with male professors or receive higher attention when evaluating men. These often focus on personality, humor, or entertainment value.">
-                <HelpCircle className="inline-block ml-1 cursor-help text-blue-600 opacity-70" size={14} />
-              </Tooltip>
-            </h3>
-            <div className="flex flex-wrap gap-2">
-              {biasAnalysis.analysis_results.top_male_terms.map(([term], index) => (
-                <div 
-                  key={`male-${term}`} 
-                  className="px-3 py-1 bg-blue-50 text-blue-700 rounded-full text-sm"
-                  style={{ opacity: 1 - (index * 0.05) }}
-                >
-                  {term}
-                </div>
-              ))}
-              {biasAnalysis.analysis_results.top_male_terms.length === 0 && (
-                <p className="text-gray-500 italic">No significant male-associated terms identified</p>
-              )}
+        {/* Male-associated categories */}
+        <div className="mb-6">
+          <h3 className="text-lg font-medium text-blue-800 mb-3">
+            Male-Associated Language Patterns
+            <Tooltip text="Terms and language patterns that research shows are more commonly associated with evaluations of male professors">
+              <HelpCircle className="inline-block ml-1 cursor-help text-blue-600 opacity-70" size={14} />
+            </Tooltip>
+          </h3>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+            {/* Intellect & Achievement */}
+            <div className="border rounded-lg p-4">
+              <h4 className="font-medium text-blue-800 mb-2">
+                Intellect & Achievement
+                <Tooltip text="Terms describing intelligence, brilliance, expertise and academic achievements. Research shows these are more commonly emphasized in evaluations of male professors.">
+                  <HelpCircle className="inline-block ml-1 cursor-help text-blue-600 opacity-70" size={14} />
+                </Tooltip>
+              </h4>
+              <div className="flex flex-wrap gap-2">
+                {analysisResults.category_stats?.intellect_achievement?.top_terms?.map(([term], index) => (
+                  <div 
+                    key={`intellect-${term}`} 
+                    className="px-3 py-1 bg-blue-50 text-blue-700 rounded-full text-sm"
+                    style={{ opacity: 1 - (index * 0.05) }}
+                  >
+                    {term}
+                  </div>
+                ))}
+                {!analysisResults.category_stats?.intellect_achievement?.top_terms?.length && (
+                  <p className="text-gray-500 italic">No significant terms identified</p>
+                )}
+              </div>
+            </div>
+            
+            {/* Entertainment & Authority */}
+            <div className="border rounded-lg p-4">
+              <h4 className="font-medium text-blue-800 mb-2">
+                Entertainment & Authority
+                <Tooltip text="Terms describing humor, entertainment value, authority, and commanding presence. Research shows these are more commonly emphasized in evaluations of male professors.">
+                  <HelpCircle className="inline-block ml-1 cursor-help text-blue-600 opacity-70" size={14} />
+                </Tooltip>
+              </h4>
+              <div className="flex flex-wrap gap-2">
+                {analysisResults.category_stats?.entertainment_authority?.top_terms?.map(([term], index) => (
+                  <div 
+                    key={`entertain-${term}`} 
+                    className="px-3 py-1 bg-blue-50 text-blue-700 rounded-full text-sm"
+                    style={{ opacity: 1 - (index * 0.05) }}
+                  >
+                    {term}
+                  </div>
+                ))}
+                {!analysisResults.category_stats?.entertainment_authority?.top_terms?.length && (
+                  <p className="text-gray-500 italic">No significant terms identified</p>
+                )}
+              </div>
             </div>
           </div>
           
+          {/* Male-associated negative terms */}
           <div className="border rounded-lg p-4">
-            <h3 className="text-lg font-medium text-pink-800 mb-3">
-              Female-Associated Terms
-              <Tooltip text="Terms that are more commonly associated with female professors or receive higher attention when evaluating women. These often focus on competence, organization, and teaching skills.">
-                <HelpCircle className="inline-block ml-1 cursor-help text-pink-600 opacity-70" size={14} />
+            <h4 className="font-medium text-navy-800 mb-2">
+              Male-Associated Criticism
+              <Tooltip text="Terms that are more commonly used when criticizing male professors. These often focus on being boring, arrogant, or too challenging.">
+                <HelpCircle className="inline-block ml-1 cursor-help text-navy-600 opacity-70" size={14} />
               </Tooltip>
-            </h3>
+            </h4>
             <div className="flex flex-wrap gap-2">
-              {biasAnalysis.analysis_results.top_female_terms.map(([term], index) => (
+              {analysisResults.category_stats?.male_negative?.top_terms?.map(([term], index) => (
                 <div 
-                  key={`female-${term}`} 
-                  className="px-3 py-1 bg-pink-50 text-pink-700 rounded-full text-sm"
+                  key={`male-neg-${term}`} 
+                  className="px-3 py-1 bg-navy-50 text-navy-700 rounded-full text-sm"
                   style={{ opacity: 1 - (index * 0.05) }}
                 >
                   {term}
                 </div>
               ))}
-              {biasAnalysis.analysis_results.top_female_terms.length === 0 && (
-                <p className="text-gray-500 italic">No significant female-associated terms identified</p>
+              {!analysisResults.category_stats?.male_negative?.top_terms?.length && (
+                <p className="text-gray-500 italic">No significant terms identified</p>
               )}
+            </div>
+          </div>
+        </div>
+        
+        {/* Female-associated categories */}
+        <div>
+          <h3 className="text-lg font-medium text-pink-800 mb-3">
+            Female-Associated Language Patterns
+            <Tooltip text="Terms and language patterns that research shows are more commonly associated with evaluations of female professors">
+              <HelpCircle className="inline-block ml-1 cursor-help text-pink-600 opacity-70" size={14} />
+            </Tooltip>
+          </h3>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+            {/* Competence & Organization */}
+            <div className="border rounded-lg p-4">
+              <h4 className="font-medium text-pink-800 mb-2">
+                Competence & Organization
+                <Tooltip text="Terms describing professional competence, organization, clarity and teaching methodology. Research shows these are more commonly emphasized in evaluations of female professors.">
+                  <HelpCircle className="inline-block ml-1 cursor-help text-pink-600 opacity-70" size={14} />
+                </Tooltip>
+              </h4>
+              <div className="flex flex-wrap gap-2">
+                {analysisResults.category_stats?.competence_organization?.top_terms?.map(([term], index) => (
+                  <div 
+                    key={`competence-${term}`} 
+                    className="px-3 py-1 bg-pink-50 text-pink-700 rounded-full text-sm"
+                    style={{ opacity: 1 - (index * 0.05) }}
+                  >
+                    {term}
+                  </div>
+                ))}
+                {!analysisResults.category_stats?.competence_organization?.top_terms?.length && (
+                  <p className="text-gray-500 italic">No significant terms identified</p>
+                )}
+              </div>
+            </div>
+            
+            {/* Warmth & Nurturing */}
+            <div className="border rounded-lg p-4">
+              <h4 className="font-medium text-pink-800 mb-2">
+                Warmth & Nurturing
+                <Tooltip text="Terms describing warmth, supportiveness, nurturing, and personality attributes. Research shows these are more commonly emphasized in evaluations of female professors.">
+                  <HelpCircle className="inline-block ml-1 cursor-help text-pink-600 opacity-70" size={14} />
+                </Tooltip>
+              </h4>
+              <div className="flex flex-wrap gap-2">
+                {analysisResults.category_stats?.warmth_nurturing?.top_terms?.map(([term], index) => (
+                  <div 
+                    key={`warmth-${term}`} 
+                    className="px-3 py-1 bg-pink-50 text-pink-700 rounded-full text-sm"
+                    style={{ opacity: 1 - (index * 0.05) }}
+                  >
+                    {term}
+                  </div>
+                ))}
+                {!analysisResults.category_stats?.warmth_nurturing?.top_terms?.length && (
+                  <p className="text-gray-500 italic">No significant terms identified</p>
+                )}
+              </div>
+            </div>
+          </div>
+          
+          {/* Female-associated negative terms */}
+          <div className="border rounded-lg p-4">
+            <h4 className="font-medium text-crimson-800 mb-2">
+              Female-Associated Criticism
+              <Tooltip text="Terms that are more commonly used when criticizing female professors. These often focus on being emotional, unprofessional, or too strict.">
+                <HelpCircle className="inline-block ml-1 cursor-help text-crimson-600 opacity-70" size={14} />
+              </Tooltip>
+            </h4>
+            <div className="flex flex-wrap gap-2">
+              {analysisResults.category_stats?.female_negative?.top_terms?.map(([term], index) => (
+                <div 
+                  key={`female-neg-${term}`} 
+                  className="px-3 py-1 bg-crimson-50 text-crimson-700 rounded-full text-sm"
+                  style={{ opacity: 1 - (index * 0.05) }}
+                >
+                  {term}
+                </div>
+              ))}
+              {!analysisResults.category_stats?.female_negative?.top_terms?.length && (
+                <p className="text-gray-500 italic">No significant terms identified</p>
+              )}
+            </div>
+          </div>
+        </div>
+        
+        {/* Original top terms section - kept for backward compatibility */}
+        <div className="mt-6 border-t border-gray-200 pt-6">
+          <h3 className="text-lg font-medium text-gray-700 mb-3">
+            Legacy Analysis
+            <Tooltip text="This is the original gender term analysis for backward compatibility.">
+              <HelpCircle className="inline-block ml-1 cursor-help text-gray-600 opacity-70" size={14} />
+            </Tooltip>
+          </h3>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="border rounded-lg p-4">
+              <h3 className="text-lg font-medium text-blue-800 mb-3">
+                Male-Associated Terms
+                <Tooltip text="Terms that are more commonly associated with male professors or receive higher attention when evaluating men.">
+                  <HelpCircle className="inline-block ml-1 cursor-help text-blue-600 opacity-70" size={14} />
+                </Tooltip>
+              </h3>
+              <div className="flex flex-wrap gap-2">
+                {biasAnalysis.analysis_results.top_male_terms.map(([term], index) => (
+                  <div 
+                    key={`male-${term}`} 
+                    className="px-3 py-1 bg-blue-50 text-blue-700 rounded-full text-sm"
+                    style={{ opacity: 1 - (index * 0.05) }}
+                  >
+                    {term}
+                  </div>
+                ))}
+                {biasAnalysis.analysis_results.top_male_terms.length === 0 && (
+                  <p className="text-gray-500 italic">No significant male-associated terms identified</p>
+                )}
+              </div>
+            </div>
+            
+            <div className="border rounded-lg p-4">
+              <h3 className="text-lg font-medium text-pink-800 mb-3">
+                Female-Associated Terms
+                <Tooltip text="Terms that are more commonly associated with female professors or receive higher attention when evaluating women.">
+                  <HelpCircle className="inline-block ml-1 cursor-help text-pink-600 opacity-70" size={14} />
+                </Tooltip>
+              </h3>
+              <div className="flex flex-wrap gap-2">
+                {biasAnalysis.analysis_results.top_female_terms.map(([term], index) => (
+                  <div 
+                    key={`female-${term}`} 
+                    className="px-3 py-1 bg-pink-50 text-pink-700 rounded-full text-sm"
+                    style={{ opacity: 1 - (index * 0.05) }}
+                  >
+                    {term}
+                  </div>
+                ))}
+                {biasAnalysis.analysis_results.top_female_terms.length === 0 && (
+                  <p className="text-gray-500 italic">No significant female-associated terms identified</p>
+                )}
+              </div>
             </div>
           </div>
         </div>

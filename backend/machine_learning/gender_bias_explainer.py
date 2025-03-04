@@ -8,26 +8,80 @@ import json
 
 # Define lexicons for different types of descriptors commonly used in evaluations
 # Research shows these patterns differ by gender in evaluations
-PERSONALITY_ENTERTAINMENT_DESCRIPTORS = {
-    'funny', 'cool', 'entertaining', 'hilarious', 'enjoyable', 'awesome', 'amazing', 'fun', 
-    'interesting', 'engaging', 'enthusiastic', 'charismatic', 'energetic', 'charming', 'witty',
-    'personable', 'caring', 'friendly', 'nice', 'sweet', 'kind', 'relatable', 'approachable',
-    'easygoing', 'understanding', 'relaxed', 'cheerful', 'excited', 'passionate', 'dynamic',
-    'humorous', 'lively', 'animated', 'captivating', 'warm', 'delightful', 'joy', 'pleasant'
+
+# Terms more commonly associated with male professors in positive evaluations
+INTELLECT_ACHIEVEMENT_DESCRIPTORS = {
+    'brilliant', 'smart', 'intelligent', 'genius', 'intellectual', 'knowledgeable', 'expert',
+    'outstanding', 'excellent', 'exceptional', 'remarkable', 'phenomenal', 'best', 'talented',
+    'impressive', 'fascinating', 'thought-provoking', 'thought', 'deep', 'analytical', 'original',
+    'innovative', 'creative', 'critical', 'sharp', 'astute', 'wisdom', 'genius', 'masterful',
+    'theoretical', 'philosophical', 'scientific', 'technical', 'research', 'scholar', 'scholarly',
+    'academic', 'intellectual', 'scientific', 'rational', 'logical', 'rigorous', 'demanding'
 }
 
-COMPETENCE_DESCRIPTORS = {
-    'knowledgeable', 'smart', 'intelligent', 'brilliant', 'expert', 'competent', 'professional',
-    'organized', 'prepared', 'thorough', 'clear', 'concise', 'rigorous', 'detailed', 'accurate', 
-    'analytical', 'precise', 'effective', 'efficient', 'informative', 'helpful', 'insightful',
-    'logical', 'methodical', 'research', 'scholarly', 'skillful', 'structured', 'comprehensive', 
-    'experienced', 'qualified', 'educated', 'sharp', 'astute', 'credible', 'capable', 'practical'
+# Terms more commonly associated with male professors - entertainment/authority
+ENTERTAINMENT_AUTHORITY_DESCRIPTORS = {
+    'funny', 'cool', 'entertaining', 'hilarious', 'humor', 'witty', 'laugh', 'funniest', 
+    'enjoyable', 'awesome', 'amazing', 'fun', 'interesting', 'engaging', 'enthusiastic', 
+    'charismatic', 'energetic', 'charming', 'dynamic', 'lively', 'animated', 'captivating', 
+    'confident', 'authoritative', 'powerful', 'strong', 'commanding', 'bold', 'direct', 
+    'straightforward', 'assertive', 'decisive', 'fair', 'objective', 'tough', 'challenging',
+    'respect', 'respectable', 'no-nonsense', 'leader', 'leadership', 'mentor'
+}
+
+# Terms more commonly associated with female professors - competence/organization
+COMPETENCE_ORGANIZATION_DESCRIPTORS = {
+    'organized', 'prepared', 'thorough', 'clear', 'concise', 'detailed', 'accurate',
+    'precise', 'effective', 'efficient', 'informative', 'helpful', 'methodical',
+    'structured', 'comprehensive', 'orderly', 'systematic', 'timely', 'punctual', 
+    'consistent', 'reliable', 'dependable', 'professional', 'diligent', 'meticulous',
+    'careful', 'attentive', 'focused', 'practical', 'pragmatic', 'reasonable',
+    'flexible', 'adaptable', 'accessible', 'available', 'responsive', 'feedback',
+    'correct', 'improve', 'improvement', 'clear', 'clarity', 'communication'
+}
+
+# Terms more commonly associated with female professors - warmth/nurturing
+WARMTH_NURTURING_DESCRIPTORS = {
+    'personable', 'caring', 'friendly', 'nice', 'sweet', 'kind', 'relatable', 'approachable',
+    'easygoing', 'understanding', 'relaxed', 'cheerful', 'excited', 'passionate', 'warm', 
+    'delightful', 'joy', 'pleasant', 'lovely', 'wonderful', 'sweetheart', 'positive',
+    'supportive', 'encouraging', 'nurturing', 'empathetic', 'compassionate', 'sympathetic',
+    'thoughtful', 'considerate', 'gentle', 'patient', 'maternal', 'motherly', 'comfort',
+    'comfortable', 'confidence', 'safe', 'welcoming', 'inclusive', 'loved', 'adore',
+    'help', 'helpful', 'dedicated', 'devoted', 'committed', 'accommodating', 'gracious'
+}
+
+# Potentially negative descriptors commonly used for male professors
+MALE_NEGATIVE_DESCRIPTORS = {
+    'boring', 'bored', 'bore', 'tedious', 'dull', 'monotonous', 'useless', 'waste',
+    'harsh', 'brutal', 'intimidating', 'arrogant', 'condescending', 'dismissive',
+    'egotistical', 'pompous', 'aggressive', 'rude', 'insensitive', 'aloof', 'cold',
+    'distant', 'detached', 'unapproachable', 'joke', 'idiot', 'insult', 'ass',
+    'jerk', 'terrible', 'horrible', 'awful', 'useless', 'incompetent', 'lazy',
+    'disorganized', 'unprepared', 'confusing', 'unclear', 'tricky', 'challenging',
+    'difficult', 'problem', 'unfair', 'biased', 'cheat', 'hard'
+}
+
+# Potentially negative descriptors commonly used for female professors  
+FEMALE_NEGATIVE_DESCRIPTORS = {
+    'unprofessional', 'emotional', 'moody', 'sensitive', 'defensive', 'dramatic',
+    'scattered', 'disorganized', 'unclear', 'confusing', 'vague', 'rambling',
+    'chatty', 'talkative', 'loud', 'shrill', 'annoying', 'irritating', 'frustrating',
+    'difficult', 'picky', 'fussy', 'demanding', 'strict', 'harsh', 'mean', 'nasty',
+    'rude', 'unfriendly', 'cold', 'uptight', 'rigid', 'inflexible', 'unreasonable',
+    'unforgiving', 'stressed', 'stressful', 'anxious', 'nervous', 'worried', 'frazzled',
+    'overwhelmed', 'scattered', 'condescend', 'condescending', 'patronizing', 'belittling'
 }
 
 # Recognize explicit gendered terms for minimal reference support
 EXPLICIT_GENDERED_TERMS = {
-    'male': {'he', 'him', 'his', 'himself', 'mr', 'sir', 'man', 'men', 'guy', 'guys', 'dude', 'father', 'dad'},
-    'female': {'she', 'her', 'hers', 'herself', 'ms', 'mrs', 'miss', 'madam', 'woman', 'women', 'gal', 'lady', 'ladies', 'mother', 'mom'}
+    'male': {'he', 'him', 'his', 'himself', 'mr', 'sir', 'man', 'men', 'guy', 'guys', 'dude', 
+            'father', 'dad', 'brother', 'gentleman', 'gentlemen', 'male', 'males', 'boy', 'boys',
+            'husband', 'son', 'sons', 'uncle', 'grandfather', 'grandson', 'king', 'prince'},
+    'female': {'she', 'her', 'hers', 'herself', 'ms', 'mrs', 'miss', 'madam', 'woman', 'women', 
+              'gal', 'lady', 'ladies', 'mother', 'mom', 'sister', 'girl', 'girls', 'female', 
+              'females', 'wife', 'daughter', 'daughters', 'aunt', 'grandmother', 'granddaughter',
+              'queen', 'princess'}
 }
 
 
@@ -52,7 +106,6 @@ class GenderBiasExplainer:
         """Load pre-calculated gender gaps in ratings by discipline"""
         try:
             # Try to import Django utilities
-            from django.conf import settings
             import django
             os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'faireval.settings')
             django.setup()
@@ -160,8 +213,12 @@ class GenderBiasExplainer:
         """
         # Categorize tokens by descriptor type
         descriptor_categories = {
-            'personality_entertainment': [], 
-            'competence': [], 
+            'intellect_achievement': [], 
+            'entertainment_authority': [],
+            'competence_organization': [],
+            'warmth_nurturing': [],
+            'male_negative': [],
+            'female_negative': [],
             'explicit_male': [], 
             'explicit_female': [], 
             'other': []
@@ -170,10 +227,18 @@ class GenderBiasExplainer:
         # Associate tokens with categories
         for i, token in enumerate(tokens):
             token_lower = token.lower()
-            if token_lower in PERSONALITY_ENTERTAINMENT_DESCRIPTORS:
-                descriptor_categories['personality_entertainment'].append((i, token, attention_weights[i]))
-            elif token_lower in COMPETENCE_DESCRIPTORS:
-                descriptor_categories['competence'].append((i, token, attention_weights[i]))
+            if token_lower in INTELLECT_ACHIEVEMENT_DESCRIPTORS:
+                descriptor_categories['intellect_achievement'].append((i, token, attention_weights[i]))
+            elif token_lower in ENTERTAINMENT_AUTHORITY_DESCRIPTORS:
+                descriptor_categories['entertainment_authority'].append((i, token, attention_weights[i]))
+            elif token_lower in COMPETENCE_ORGANIZATION_DESCRIPTORS:
+                descriptor_categories['competence_organization'].append((i, token, attention_weights[i]))
+            elif token_lower in WARMTH_NURTURING_DESCRIPTORS:
+                descriptor_categories['warmth_nurturing'].append((i, token, attention_weights[i]))
+            elif token_lower in MALE_NEGATIVE_DESCRIPTORS:
+                descriptor_categories['male_negative'].append((i, token, attention_weights[i]))
+            elif token_lower in FEMALE_NEGATIVE_DESCRIPTORS:
+                descriptor_categories['female_negative'].append((i, token, attention_weights[i]))
             elif token_lower in EXPLICIT_GENDERED_TERMS['male']:
                 descriptor_categories['explicit_male'].append((i, token, attention_weights[i]))
             elif token_lower in EXPLICIT_GENDERED_TERMS['female']:
@@ -197,15 +262,20 @@ class GenderBiasExplainer:
             for k, v in category_attention.items()
         }
         
-        
-        # Calculate descriptor type bias - positive values indicate more focus on personality/entertainment
-        # (typically associated with male professor evaluations) versus competence (female professors)
-        pers_ent_weight = category_attention['personality_entertainment']
-        comp_weight = category_attention['competence']
+        # Calculate male-associated vs female-associated descriptor bias
+        # Male-associated: intellect_achievement + entertainment_authority + male_negative
+        # Female-associated: competence_organization + warmth_nurturing + female_negative
+        male_pattern_weight = (category_attention['intellect_achievement'] + 
+                               category_attention['entertainment_authority'] + 
+                               category_attention['male_negative'])
+                               
+        female_pattern_weight = (category_attention['competence_organization'] + 
+                                category_attention['warmth_nurturing'] + 
+                                category_attention['female_negative'])
         
         descriptor_bias_score = 0
-        if (pers_ent_weight + comp_weight) > 0:
-            descriptor_bias_score = (pers_ent_weight - comp_weight) / (pers_ent_weight + comp_weight)
+        if (male_pattern_weight + female_pattern_weight) > 0:
+            descriptor_bias_score = (male_pattern_weight - female_pattern_weight) / (male_pattern_weight + female_pattern_weight)
         
         # Calculate explicit gender bias - positive means male, negative means female
         explicit_gender_bias = 0
@@ -213,7 +283,7 @@ class GenderBiasExplainer:
         if total_explicit > 0:
             explicit_gender_bias = (category_attention['explicit_male'] - category_attention['explicit_female']) / total_explicit
             
-        # Calculate overall bias score - weighted combination of descriptor type bias and explicit gender bias
+        # Calculate overall bias score - weighted combination of descriptor pattern bias and explicit gender bias
         bias_score = 0.7 * descriptor_bias_score + 0.3 * explicit_gender_bias
         
         # Find top attended terms by category
@@ -243,12 +313,17 @@ class GenderBiasExplainer:
         """Generate interpretation of the detected gender bias patterns"""
         # Determine bias direction and strength
         abs_descriptor_bias = abs(descriptor_bias)
-        descriptor_bias_dir = "personality/entertainment-focused" if descriptor_bias > 0 else "competence-focused"
+        descriptor_bias_dir = "male-pattern" if descriptor_bias > 0 else "female-pattern"
         descriptor_strength = "strong" if abs_descriptor_bias > 0.5 else "moderate" if abs_descriptor_bias > 0.2 else "weak"
         
-        # Calculate combined sentiment for different descriptor types
-        pers_ent_pct = attention_pct['personality_entertainment']
-        competence_pct = attention_pct['competence']
+        # Calculate combined percentages for different descriptor types
+        male_pattern_pct = (attention_pct['intellect_achievement'] + 
+                           attention_pct['entertainment_authority'] + 
+                           attention_pct['male_negative'])
+                           
+        female_pattern_pct = (attention_pct['competence_organization'] + 
+                             attention_pct['warmth_nurturing'] + 
+                             attention_pct['female_negative'])
         
         # Put interpretation together
         interpretation = []
@@ -257,16 +332,38 @@ class GenderBiasExplainer:
         if abs_descriptor_bias > 0.2:
             if descriptor_bias > 0:
                 interpretation.append(
-                    f"This evaluation shows a {descriptor_strength} focus on personality and entertainment qualities "
-                    f"({pers_ent_pct:.1f}% of attention) versus competence ({competence_pct:.1f}% of attention), "
-                    f"a pattern more commonly observed in evaluations of male professors."
+                    f"This evaluation shows a {descriptor_strength} focus on male-associated language patterns "
+                    f"({male_pattern_pct:.1f}% of attention) versus female-associated patterns ({female_pattern_pct:.1f}% of attention)."
                 )
+                
+                # Add more specific analysis
+                if attention_pct['intellect_achievement'] > 15:
+                    interpretation.append(
+                        f"There is significant emphasis on intellectual achievement and brilliance, "
+                        f"which research shows is more commonly associated with evaluations of male professors."
+                    )
+                if attention_pct['entertainment_authority'] > 15:
+                    interpretation.append(
+                        f"The evaluation focuses on entertainment value and authority, "
+                        f"attributes that are more frequently emphasized in evaluations of male professors."
+                    )
             else:
                 interpretation.append(
-                    f"This evaluation shows a {descriptor_strength} focus on competence and professional qualities "
-                    f"({competence_pct:.1f}% of attention) versus personality ({pers_ent_pct:.1f}% of attention), "
-                    f"a pattern more commonly observed in evaluations of female professors."
+                    f"This evaluation shows a {descriptor_strength} focus on female-associated language patterns "
+                    f"({female_pattern_pct:.1f}% of attention) versus male-associated patterns ({male_pattern_pct:.1f}% of attention)."
                 )
+                
+                # Add more specific analysis
+                if attention_pct['competence_organization'] > 15:
+                    interpretation.append(
+                        f"There is significant emphasis on competence and organizational skills, "
+                        f"which research shows are more commonly highlighted in evaluations of female professors."
+                    )
+                if attention_pct['warmth_nurturing'] > 15:
+                    interpretation.append(
+                        f"The evaluation focuses on warmth, nurturing qualities, and personality, "
+                        f"attributes that are more frequently emphasized in evaluations of female professors."
+                    )
         
         # Comment on explicit gender references if significant
         if abs(explicit_bias) > 0.3:
@@ -274,6 +371,19 @@ class GenderBiasExplainer:
             interpretation.append(
                 f"There are significant explicit references to {explicit_gender} gender in this evaluation."
             )
+        
+        # Add note about negative descriptors if present
+        if attention_pct['male_negative'] > 10 or attention_pct['female_negative'] > 10:
+            if attention_pct['male_negative'] > attention_pct['female_negative']:
+                interpretation.append(
+                    f"The negative language used is more typical of criticisms directed at male professors "
+                    f"(focusing on being boring, harsh, or arrogant)."
+                )
+            else:
+                interpretation.append(
+                    f"The negative language used is more typical of criticisms directed at female professors "
+                    f"(focusing on being unprofessional, emotional, or too strict)."
+                )
         
         return interpretation
     
@@ -326,10 +436,18 @@ class GenderBiasExplainer:
         colors = []
         for i, token in enumerate(tokens):
             token_lower = token.lower()
-            if token_lower in PERSONALITY_ENTERTAINMENT_DESCRIPTORS:
-                colors.append('purple')  # Personality/entertainment descriptors
-            elif token_lower in COMPETENCE_DESCRIPTORS:
-                colors.append('orange')  # Competence descriptors
+            if token_lower in INTELLECT_ACHIEVEMENT_DESCRIPTORS:
+                colors.append('darkblue')  # Intellect/achievement descriptors
+            elif token_lower in ENTERTAINMENT_AUTHORITY_DESCRIPTORS:
+                colors.append('royalblue')  # Entertainment/authority descriptors
+            elif token_lower in COMPETENCE_ORGANIZATION_DESCRIPTORS:
+                colors.append('darkorange')  # Competence/organization descriptors
+            elif token_lower in WARMTH_NURTURING_DESCRIPTORS:
+                colors.append('pink')  # Warmth/nurturing descriptors
+            elif token_lower in MALE_NEGATIVE_DESCRIPTORS:
+                colors.append('navy')  # Male-associated negative descriptors
+            elif token_lower in FEMALE_NEGATIVE_DESCRIPTORS:
+                colors.append('crimson')  # Female-associated negative descriptors
             elif token_lower in EXPLICIT_GENDERED_TERMS['male']:
                 colors.append('blue')    # Explicitly male terms
             elif token_lower in EXPLICIT_GENDERED_TERMS['female']:
@@ -377,8 +495,12 @@ class GenderBiasExplainer:
         # Add legend
         from matplotlib.patches import Patch
         legend_elements = [
-            Patch(facecolor='purple', label='Personality/Entertainment'),
-            Patch(facecolor='orange', label='Competence'),
+            Patch(facecolor='darkblue', label='Intellect/Achievement'),
+            Patch(facecolor='royalblue', label='Entertainment/Authority'),
+            Patch(facecolor='darkorange', label='Competence/Organization'),
+            Patch(facecolor='pink', label='Warmth/Nurturing'),
+            Patch(facecolor='navy', label='Male-Associated Negative'),
+            Patch(facecolor='crimson', label='Female-Associated Negative'),
             Patch(facecolor='blue', label='Explicit Male'),
             Patch(facecolor='red', label='Explicit Female'),
             Patch(facecolor='gray', label='Other Terms')
