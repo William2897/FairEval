@@ -842,7 +842,58 @@ class RatingViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         queryset = Rating.objects.select_related('professor').all()
         return queryset
-    
+        
+    def destroy(self, request, *args, **kwargs):
+        """Override destroy method to delete course evaluation"""
+        try:
+            instance = self.get_object()
+            self.perform_destroy(instance)
+            return Response({"message": "Evaluation deleted successfully"}, status=status.HTTP_204_NO_CONTENT)
+        except Exception as e:
+            import traceback
+            print(f"Error in destroy method: {str(e)}")
+            print(traceback.format_exc())
+            return Response({"error": f"Error deleting evaluation: {str(e)}"}, 
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    @action(detail=False, methods=['post', 'delete'])
+    def bulk_delete(self, request):
+        """Bulk delete multiple ratings"""
+        try:
+            # Handle both POST and DELETE requests
+            if request.method == 'DELETE':
+                # For DELETE requests, data is in request.data or request.query_params
+                ids = request.data.get('ids', []) if request.data else request.query_params.getlist('ids')
+            else:  # POST
+                ids = request.data.get('ids', [])
+                
+            if not ids:
+                return Response({"error": "No rating IDs provided"}, 
+                                status=status.HTTP_400_BAD_REQUEST)
+                                
+            # Get the ratings to delete
+            ratings_to_delete = Rating.objects.filter(id__in=ids)
+            if not ratings_to_delete.exists():
+                return Response({"error": "No ratings found with the provided IDs"}, 
+                                status=status.HTTP_404_NOT_FOUND)
+                                
+            # Count how many were found
+            found_count = ratings_to_delete.count()
+            
+            # Perform the delete
+            ratings_to_delete.delete()
+            
+            return Response({
+                "message": f"Successfully deleted {found_count} ratings",
+                "deleted_count": found_count
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            import traceback
+            print(f"Error in bulk_delete method: {str(e)}")
+            print(traceback.format_exc())
+            return Response({"error": f"Error performing bulk delete: {str(e)}"}, 
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
     @action(detail=False, methods=['get'])
     def stats(self, request):
         """Get institution-wide rating statistics"""

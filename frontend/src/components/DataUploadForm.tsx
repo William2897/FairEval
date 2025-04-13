@@ -55,13 +55,13 @@ export const DataUploadForm: React.FC = () => {
           // Try to access the count from processed_records first (from process_evaluation_data_task)
           // then fallback to processed (from process_rating_upload)
           setProcessedRecords(data.result.processed_records || data.result.processed || 0);
-        }
-        // Refresh relevant data
+        }        // Refresh relevant data
         queryClient.invalidateQueries({ queryKey: ['ratings'] });
         queryClient.invalidateQueries({ queryKey: ['professors'] });
         queryClient.invalidateQueries({ queryKey: ['departmentStats'] });
         queryClient.invalidateQueries({ queryKey: ['sentiment-analysis'] });
         queryClient.invalidateQueries({ queryKey: ['discipline-stats'] });
+        queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] }); // Add this to update the Dashboard count
       } else if (data.status === 'FAILURE') {
         setProcessingStatus('error');
       } else {
