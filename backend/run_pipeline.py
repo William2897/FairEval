@@ -20,10 +20,10 @@ db_config = {
     'port': settings.DATABASES['default']['PORT']
 }
 
-# csv_file = "professors_75346.csv"
+csv_file = "professors_75346.csv"
 
-# if __name__ == "__main__":
-#     run_full_pipeline(csv_file, db_config)
+if __name__ == "__main__":
+    run_full_pipeline(csv_file, db_config)
 
-processed_csv = "professors_75346_processed.csv"
-run_db_population(processed_csv, db_config)
+# processed_csv = "professors_75346_processed.csv"
+# run_db_population(processed_csv, db_config)

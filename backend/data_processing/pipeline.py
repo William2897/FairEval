@@ -26,33 +26,47 @@ def validate_sentiment_data(df):
     
     return df
 
-def run_full_pipeline(csv_path, db_config):
+def run_full_pipeline(csv_path, db_config, run_sentiment=True):
     """Optimized pipeline with batch processing"""
     print("\n--- Stage 1: Data Ingestion ---")
     df = ingest_csv_to_df(csv_path)
+    print(f"[DEBUG ROWS] After ingestion: {len(df)} rows")
     
     print("\n--- Stage 2: Data Processing ---")
     df = clean_data(df)
+    print(f"[DEBUG ROWS] After cleaning: {len(df)} rows")
     df = engineer_gender(df)
+    print(f"[DEBUG ROWS] After gender assignment: {len(df)} rows")
     df = map_departments(df)  # This now returns discipline and sub_discipline
-    
-    # Process comments and save data before term frequency calculation
+    print(f"[DEBUG ROWS] After department mapping: {len(df)} rows")
+      # Process comments and save data before term frequency calculation
     print("\nProcessing comments...")
+    print(f"[DEBUG ROWS] Before comment processing: {len(df)} rows")
     processed_data = preprocess_comments(df)
     df = processed_data[0]  # Get the processed dataframe
+    print(f"[DEBUG ROWS] After comment processing: {len(df)} rows")
     
     # Save processed data
     processed_csv_path = csv_path.replace('.csv', '_processed.csv')
     df.to_csv(processed_csv_path, index=False)
     print(f"\nProcessed data saved to: {processed_csv_path}")
+    print(f"[DEBUG ROWS] Saved to CSV: {len(df)} rows")
     
     # Proceed directly to database population
-    run_db_population(processed_csv_path, db_config)
+    if run_sentiment:
+        run_db_population(processed_csv_path, db_config)
+    else:
+        print("\nSkipping database population as requested. Processed CSV is available at:", processed_csv_path)
+        return df
 
 def run_db_population(processed_csv_path, db_config):
     """Run only the database population stage using processed CSV"""
     print("\n--- Loading processed data ---")
     df = pd.read_csv(processed_csv_path)
+    
+    # Store original record count for reporting
+    original_record_count = len(df)
+    print(f"Total records to process: {original_record_count}")
     
     # Validate sentiment data before insertion
     df = validate_sentiment_data(df)
@@ -181,16 +195,17 @@ def run_db_population(processed_csv_path, db_config):
         failed_inserts = 0
         
         for chunk in rating_chunks:
-            try:
-                # Prepare data arrays for ratings
+            try:                # Prepare data arrays for ratings
                 prof_ids = chunk['professor_id'].tolist()
                 avg_ratings = chunk['avg_rating'].tolist()
                 flag_statuses = chunk['flag_status'].tolist()
                 helpful_ratings = chunk['helpful_rating'].tolist()
                 clarity_ratings = chunk['clarity_rating'].tolist()
                 difficulty_ratings = chunk['difficulty_rating'].tolist()
-                is_onlines = chunk['is_online'].tolist()
-                is_for_credits = chunk['is_for_credit'].tolist()
+                
+                # Fix for boolean fields - convert NaN values to False
+                is_onlines = [False if pd.isna(val) else bool(val) for val in chunk['is_online']]
+                is_for_credits = [False if pd.isna(val) else bool(val) for val in chunk['is_for_credit']]
                 timestamps = [current_time] * len(chunk)
                 
                 # Execute ratings insertion
@@ -236,11 +251,18 @@ def run_db_population(processed_csv_path, db_config):
                 print(f"Error processing chunk: {str(e)}")
                 continue
             
-            gc.collect()
-
-        print(f"\nInsertion complete:")
+            gc.collect()        
+            print(f"\nInsertion complete:")
         print(f"Successful inserts: {successful_inserts}")
         print(f"Failed inserts: {failed_inserts}")
+        
+        # Return the counts so the calling function can know how many records were processed
+        return {
+            "original_count": original_record_count,
+            "successful_inserts": successful_inserts,
+            "failed_inserts": failed_inserts,
+            "total_processed": successful_inserts + failed_inserts
+        }
 
     except Exception as e:
         conn.rollback()

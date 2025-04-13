@@ -103,9 +103,16 @@ def preprocess_comments(df):
     try:
         print(f"Processing {len(df)} comments...")
         
+        # Debug: Check for missing comments before processing
+        print(f"[DEBUG] Missing comments: {df['rating_comment'].isna().sum()} out of {len(df)}")
+        print(f"[DEBUG] Empty comments: {(df['rating_comment'] == '').sum()} out of {len(df)}")
+        print(f"[DEBUG] Comment sample: {df['rating_comment'].head(3).tolist()}")
+        
         # Process comments
         comments = df['rating_comment'].fillna('').tolist()
+        print(f"[DEBUG] Comments to process: {len(comments)}")
         processed_comments = process_texts(comments)
+        print(f"[DEBUG] Processed comments returned: {len(processed_comments)}")
         df['processed_comment'] = processed_comments
         
         # Extract sentiment terms

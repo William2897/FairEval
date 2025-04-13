@@ -42,8 +42,6 @@ from machine_learning.gender_bias_explainer import GenderBiasExplainer
 from machine_learning.ml_model_dev.lstm import CustomSentimentLSTM
 from data_processing.gender_assignment import MALE_KEYWORDS, FEMALE_KEYWORDS
 
-
-
 User = get_user_model()
 
 # Cache timeouts (in seconds)
@@ -833,7 +831,7 @@ class ProfessorViewSet(viewsets.ModelViewSet):
 class RatingViewSet(viewsets.ModelViewSet):
     queryset = Rating.objects.all()
     serializer_class = RatingSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.AllowAny]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_class = RatingFilter
     search_fields = ['professor__first_name', 'professor__last_name', 'professor__discipline', 'professor__sub_discipline']
@@ -885,6 +883,111 @@ class RatingViewSet(viewsets.ModelViewSet):
         cache.set(cache_key, data, CACHE_TIMEOUT_SHORT)
         
         return Response(data)
+        
+    @action(detail=False, methods=['get', 'post'], permission_classes=[permissions.AllowAny])
+    def upload(self, request):
+        """
+        Upload and process evaluation data CSV file.
+        GET: Returns a status or form
+        POST: Processes the uploaded file
+        """
+        
+        # Handle GET request - Just return a simple response for now
+        if request.method == 'GET':
+            return Response({
+                "message": "Upload evaluation data (CSV) using a POST request to this endpoint", 
+                "allowed_methods": ["POST"],
+                "required_fields": ["file (CSV file)"]
+            })
+            
+        # Handle POST request for file upload
+        if 'file' not in request.FILES:
+            return Response({
+                "error": "No file was uploaded",
+                "help": "Please attach a CSV file with the 'file' key"
+            }, status=status.HTTP_400_BAD_REQUEST)
+            
+        file = request.FILES['file']
+        
+        # Validate file extension
+        if not file.name.endswith('.csv'):
+            return Response({
+                "error": "Uploaded file must be a CSV file"
+            }, status=status.HTTP_400_BAD_REQUEST)
+            
+        # Save the uploaded file temporarily
+        import tempfile
+        import os
+        from django.conf import settings
+        from django.core.files.storage import FileSystemStorage
+        
+        # Create temp directory if it doesn't exist
+        temp_dir = os.path.join(settings.BASE_DIR, 'tmp')
+        os.makedirs(temp_dir, exist_ok=True)
+        
+        # Save the file
+        fs = FileSystemStorage(location=temp_dir)
+        filename = fs.save(file.name, file)
+        file_path = os.path.join(temp_dir, filename)
+        
+        try:
+            # Configure database connection
+            db_config = {
+                'dbname': settings.DATABASES['default']['NAME'],
+                'user': settings.DATABASES['default']['USER'],
+                'password': settings.DATABASES['default']['PASSWORD'],
+                'host': settings.DATABASES['default']['HOST'],
+                'port': settings.DATABASES['default']['PORT']
+            }
+            
+            from data_processing.pipeline import run_full_pipeline
+            from api.tasks import process_evaluation_data_task
+            
+            # Run the data processing task asynchronously
+            task = process_evaluation_data_task.delay(file_path, db_config)
+            
+            return Response({
+                "message": "File uploaded successfully. Processing has begun.",
+                "task_id": task.id
+            }, status=status.HTTP_202_ACCEPTED)
+            
+        except Exception as e:
+            # Clean up the file
+            if os.path.exists(file_path):
+                os.remove(file_path)
+                
+            import traceback
+            return Response({
+                "error": f"Error processing file: {str(e)}",
+                "details": traceback.format_exc()
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            
+    @action(detail=False, methods=['get'])
+    def upload_status(self, request):
+        """Check the status of an evaluation data upload task"""
+        task_id = request.query_params.get('task_id')
+        
+        if not task_id:
+            return Response({
+                "error": "No task_id provided"
+            }, status=status.HTTP_400_BAD_REQUEST)
+            
+        from api.tasks import process_evaluation_data_task
+        from celery.result import AsyncResult
+        
+        task_result = AsyncResult(task_id)
+        
+        result = {
+            "task_id": task_id,
+            "status": task_result.status,
+        }
+        
+        if task_result.successful():
+            result["result"] = task_result.result
+        elif task_result.failed():
+            result["error"] = str(task_result.result)
+            
+        return Response(result)
 
 class SentimentViewSet(viewsets.ModelViewSet):
     queryset = Sentiment.objects.all()
@@ -1188,3 +1291,94 @@ class SentimentExplainabilityViewSet(viewsets.ViewSet):
             })
             
         return recommendations
+
+    @action(detail=False, methods=['post'], url_path='upload-evaluation-data', permission_classes=[permissions.AllowAny])
+    def upload_evaluation_data(self, request):
+        """
+        Upload and process evaluation data CSV file.
+        This endpoint is accessible to all users.
+        """
+        # Check if the file was uploaded
+        if 'file' not in request.FILES:
+            return Response({
+                "error": "No file was uploaded"
+            }, status=status.HTTP_400_BAD_REQUEST)
+            
+        # Validate file extension
+        file = request.FILES['file']
+        if not file.name.endswith('.csv'):
+            return Response({
+                "error": "Uploaded file must be a CSV file"
+            }, status=status.HTTP_400_BAD_REQUEST)
+            
+        # Save the uploaded file temporarily
+        import tempfile
+        import os
+        from django.conf import settings
+        from django.core.files.storage import FileSystemStorage
+        
+        # Create temp directory if it doesn't exist
+        temp_dir = os.path.join(settings.BASE_DIR, 'tmp')
+        os.makedirs(temp_dir, exist_ok=True)
+        
+        # Save the file
+        fs = FileSystemStorage(location=temp_dir)
+        filename = fs.save(file.name, file)
+        file_path = os.path.join(temp_dir, filename)
+        
+        try:
+            # Configure database connection
+            db_config = {
+                'dbname': settings.DATABASES['default']['NAME'],
+                'user': settings.DATABASES['default']['USER'],
+                'password': settings.DATABASES['default']['PASSWORD'],
+                'host': settings.DATABASES['default']['HOST'],
+                'port': settings.DATABASES['default']['PORT']
+            }
+            
+            from data_processing.pipeline import run_full_pipeline
+            from api.tasks import process_evaluation_data_task
+            
+            # Run the data processing task asynchronously
+            task = process_evaluation_data_task.delay(file_path, db_config)
+            
+            return Response({
+                "message": "File uploaded successfully. Processing has begun.",
+                "task_id": task.id
+            }, status=status.HTTP_202_ACCEPTED)
+            
+        except Exception as e:
+            # Clean up the file
+            if os.path.exists(file_path):
+                os.remove(file_path)
+                
+            return Response({
+                "error": f"Error processing file: {str(e)}"
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            
+    @action(detail=False, methods=['get'])
+    def upload_status(self, request):
+        """Check the status of an evaluation data upload task"""
+        task_id = request.query_params.get('task_id')
+        
+        if not task_id:
+            return Response({
+                "error": "No task_id provided"
+            }, status=status.HTTP_400_BAD_REQUEST)
+            
+        from api.tasks import process_evaluation_data_task
+        from celery.result import AsyncResult
+        
+        task_result = AsyncResult(task_id)
+        
+        result = {
+            "task_id": task_id,
+            "status": task_result.status,
+        }
+        
+        if task_result.successful():
+            result["result"] = task_result.result
+        elif task_result.failed():
+            result["error"] = str(task_result.result)
+            
+        return Response(result)
