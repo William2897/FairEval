@@ -40,7 +40,6 @@ from .utils import (
 import torch
 from machine_learning.gender_bias_explainer import GenderBiasExplainer
 from machine_learning.ml_model_dev.lstm import CustomSentimentLSTM
-from data_processing.gender_assignment import MALE_KEYWORDS, FEMALE_KEYWORDS
 
 User = get_user_model()
 
@@ -1071,276 +1070,193 @@ class SentimentExplainabilityViewSet(viewsets.ViewSet):
     API endpoints for LSTM model explainability and gender bias analysis
     """
     lookup_field = 'professor_id'
-    permission_classes = [permissions.IsAuthenticated]
-    
+    permission_classes = [permissions.IsAuthenticated] # Keep authentication
+
     @action(detail=False, methods=['post'])
     def explain_comment(self, request):
         """Analyze a comment with attention-based gender bias explanation"""
         comment = request.data.get('comment', '')
         discipline = request.data.get('discipline', None)
-        
+        # --- GET SELECTED GENDER ---
+        selected_gender = request.data.get('gender', None)
+
         if not comment:
-            return Response({"error": "Comment text is required"}, status=400)
-        
+            return Response({"error": "Comment text is required"}, status=status.HTTP_400_BAD_REQUEST)
+        # --- VALIDATE GENDER ---
+        if not selected_gender or selected_gender not in ['Male', 'Female']:
+            return Response({"error": "Valid gender ('Male' or 'Female') selection is required"}, status=status.HTTP_400_BAD_REQUEST)
+
         try:
-            # Load LSTM model and vocabulary
+            # --- LOAD MODEL AND VOCAB (same as before) ---
             model_path = os.path.join(settings.BASE_DIR, 'machine_learning/ml_models_trained/lstm_sentiment.pt')
             vocab_path = os.path.join(settings.BASE_DIR, 'machine_learning/ml_models_trained/vocab.json')
-            
-            # Check if model and vocab files exist
             if not os.path.exists(model_path) or not os.path.exists(vocab_path):
-                return Response({"error": "Model files not found"}, status=500)
-                
-            # Load vocabulary
+                return Response({"error": "Model files not found"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
             with open(vocab_path, 'r', encoding='utf-8') as f:
                 vocab = json.load(f)
-                
-            # Set up device
             device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-            
-            # Initialize model
             model = CustomSentimentLSTM(
-                vocab_size=len(vocab),
-                embed_dim=128,
-                hidden_dim=256,
-                num_layers=2,
-                dropout=0.5
+                vocab_size=len(vocab), embed_dim=128, hidden_dim=256, num_layers=2, dropout=0.5
             ).to(device)
-            
-            # Load model weights
             model.load_state_dict(torch.load(model_path, map_location=device))
             model.eval()
-            
-            # Initialize explainer - updated to match new constructor
+
             explainer = GenderBiasExplainer(model, vocab)
-            
-            # Get explanation
-            explanation = explainer.explain_prediction(comment, discipline)
-            
+
+            # --- PASS selected_gender TO EXPLAINER ---
+            explanation = explainer.explain_prediction(comment, selected_gender, discipline)
+
+            # --- The explanation structure is already updated by the explainer ---
             return Response(explanation)
-            
+
         except Exception as e:
             import traceback
             return Response({
                 "error": f"Error analyzing comment: {str(e)}",
                 "traceback": traceback.format_exc()
-            }, status=500)
-            
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
     @action(detail=True, methods=['get'])
     def professor_bias_analysis(self, request, professor_id=None):
         """Analyze gender bias patterns in a professor's comments"""
         try:
-            # Check if this is an admin or the professor themselves
-            if (request.user.role.role != 'ADMIN' and 
-                (not hasattr(request.user, 'username') or 
-                 request.user.username != professor_id)):
-                return Response({"error": "You don't have permission to access this data"}, 
-                               status=status.HTTP_403_FORBIDDEN)
-                
-            # Get the professor's comments
+            # Permission check (no change)
+            user_role = getattr(request.user, 'role', None)
+            if not user_role or (user_role.role != 'ADMIN' and request.user.username != professor_id):
+                 return Response({"error": "You don't have permission to access this data"}, status=status.HTTP_403_FORBIDDEN)
+
             from api.models import Sentiment, Professor
-            
             try:
                 professor = Professor.objects.get(professor_id=professor_id)
             except Professor.DoesNotExist:
-                return Response({"error": f"Professor with ID {professor_id} not found"}, 
-                              status=status.HTTP_404_NOT_FOUND)
-                
-            # Get all comments for the professor
+                return Response({"error": f"Professor with ID {professor_id} not found"}, status=status.HTTP_404_NOT_FOUND)
+
+            # --- GET PROFESSOR'S GENDER ---
+            selected_gender = professor.gender
+            if not selected_gender or selected_gender not in ['Male', 'Female']:
+                 # Handle cases where professor gender might be missing or invalid
+                 return Response({"error": f"Professor {professor_id} has an invalid or missing gender designation. Analysis cannot proceed."}, status=status.HTTP_400_BAD_REQUEST)
+
             comments = Sentiment.objects.filter(
-                professor_id=professor_id,
-                comment__isnull=False
+                professor_id=professor_id, comment__isnull=False
             ).values_list('comment', flat=True)
-            
+
             if not comments:
-                return Response({"error": "No comments found for this professor"}, status=404)
-                
-            # Load LSTM model and vocabulary (same as above)
+                return Response({"error": "No comments found for this professor"}, status=status.HTTP_404_NOT_FOUND)
+
+            # Load model and vocab (same as before)
             model_path = os.path.join(settings.BASE_DIR, 'machine_learning/ml_models_trained/lstm_sentiment.pt')
             vocab_path = os.path.join(settings.BASE_DIR, 'machine_learning/ml_models_trained/vocab.json')
-            
             if not os.path.exists(model_path) or not os.path.exists(vocab_path):
                 return Response({"error": "Model files not found"}, status=500)
-                
-            with open(vocab_path, 'r', encoding='utf-8') as f:
-                vocab = json.load(f)
-                
+            with open(vocab_path, 'r', encoding='utf-8') as f: vocab = json.load(f)
             device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-            
-            model = CustomSentimentLSTM(
-                vocab_size=len(vocab),
-                embed_dim=128,
-                hidden_dim=256,
-                num_layers=2,
-                dropout=0.5
-            ).to(device)
-            
+            model = CustomSentimentLSTM(len(vocab), 128, 256, 2, 0.5).to(device)
             model.load_state_dict(torch.load(model_path, map_location=device))
             model.eval()
-            
-            # Initialize explainer - updated to match new constructor
+
             explainer = GenderBiasExplainer(model, vocab)
-            
-            # Get discipline for context
+
             discipline = professor.discipline
-            
-            # Analyze a batch of comments (limit to 100 for performance)
-            comments_list = list(comments[:100])
-            
-            # Batch analysis
-            batch_results = explainer.analyze_comments_batch(comments_list, [discipline] * len(comments_list))
-            
-            # Get professor metrics for recommendations
+            comments_list = list(comments[:100]) # Limit batch size
+
+            # --- PASS selected_gender TO BATCH ANALYZER ---
+            batch_results = explainer.analyze_comments_batch(comments_list, selected_gender, [discipline] * len(comments_list))
+
             metrics = calculate_professor_metrics(professor_id)
-            
-            # Generate bias-aware recommendations
-            recommendations = self._generate_bias_recommendations(batch_results, metrics)
-            
-            # Extract and prepare top terms for frontend compatibility
-            top_male_terms = []
-            top_female_terms = []
-            
-            # Extract from category_stats
-            if 'category_stats' in batch_results:
-                # Get explicit gendered terms
-                if 'explicit_male' in batch_results['category_stats'] and batch_results['category_stats']['explicit_male']['top_terms']:
-                    top_male_terms.extend(batch_results['category_stats']['explicit_male']['top_terms'])
-                
-                if 'explicit_female' in batch_results['category_stats'] and batch_results['category_stats']['explicit_female']['top_terms']:
-                    top_female_terms.extend(batch_results['category_stats']['explicit_female']['top_terms'])
-                
-                # Get male-associated descriptor terms
-                if 'intellect_achievement' in batch_results['category_stats'] and batch_results['category_stats']['intellect_achievement']['top_terms']:
-                    top_male_terms.extend(batch_results['category_stats']['intellect_achievement']['top_terms'][:3])
-                    
-                if 'entertainment_authority' in batch_results['category_stats'] and batch_results['category_stats']['entertainment_authority']['top_terms']:
-                    top_male_terms.extend(batch_results['category_stats']['entertainment_authority']['top_terms'][:3])
-                    
-                # Get female-associated descriptor terms
-                if 'competence_organization' in batch_results['category_stats'] and batch_results['category_stats']['competence_organization']['top_terms']:
-                    top_female_terms.extend(batch_results['category_stats']['competence_organization']['top_terms'][:3])
-                    
-                if 'warmth_nurturing' in batch_results['category_stats'] and batch_results['category_stats']['warmth_nurturing']['top_terms']:
-                    top_female_terms.extend(batch_results['category_stats']['warmth_nurturing']['top_terms'][:3])
-            
-            # Add top terms to the analysis results for frontend compatibility
-            batch_results['top_male_terms'] = top_male_terms[:10]  # Limit to top 10
-            batch_results['top_female_terms'] = top_female_terms[:10]  # Limit to top 10
-            
-            # Complete response with all data
+            recommendations = self._generate_bias_recommendations(batch_results, metrics, selected_gender) # Pass gender
+
+            # --- NO NEED TO EXTRACT top_male/female_terms anymore, structure changed ---
+
             response = {
                 'professor_id': professor_id,
                 'discipline': discipline,
-                'analysis_results': batch_results,
+                'professor_gender': selected_gender, # Add professor's gender for context
+                'analysis_results': batch_results, # Structure already updated by explainer
                 'recommendations': recommendations
             }
-            
             return Response(response)
-            
+
         except Exception as e:
             import traceback
             return Response({
                 "error": f"Error analyzing professor bias: {str(e)}",
                 "traceback": traceback.format_exc()
-            }, status=500)
-            
-    def _generate_bias_recommendations(self, analysis_results, metrics):
-        """Generate teaching recommendations based on bias analysis"""
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    # --- REVISED RECOMMENDATIONS BASED ON NEW STRUCTURE ---
+    def _generate_bias_recommendations(self, analysis_results, metrics, professor_gender):
+        """Generate teaching recommendations based on new bias analysis structure"""
         recommendations = []
-        
-        # Check for strong bias in comments
-        bias_score = analysis_results['overall_bias_score']
-        pos_bias = analysis_results['positive_comments_bias_score']
-        neg_bias = analysis_results['negative_comments_bias_score']
-        descriptor_bias = analysis_results['descriptor_bias_score']
-        
-        # Extract terms for supporting evidence
-        male_terms = []
-        female_terms = []
-        male_pattern_terms = []
-        female_pattern_terms = []
-        
-        if 'category_stats' in analysis_results:
-            # Get explicit gendered terms
-            if 'explicit_male' in analysis_results['category_stats'] and analysis_results['category_stats']['explicit_male']['top_terms']:
-                male_terms = [term for term, _ in analysis_results['category_stats']['explicit_male']['top_terms'][:5]]
-            
-            if 'explicit_female' in analysis_results['category_stats'] and analysis_results['category_stats']['explicit_female']['top_terms']:
-                female_terms = [term for term, _ in analysis_results['category_stats']['explicit_female']['top_terms'][:5]]
-            
-            # Get male-associated pattern terms (intellect/achievement + entertainment/authority)
-            male_pattern_terms = []
-            if 'intellect_achievement' in analysis_results['category_stats'] and analysis_results['category_stats']['intellect_achievement']['top_terms']:
-                male_pattern_terms.extend([term for term, _ in analysis_results['category_stats']['intellect_achievement']['top_terms'][:3]])
-            
-            if 'entertainment_authority' in analysis_results['category_stats'] and analysis_results['category_stats']['entertainment_authority']['top_terms']:
-                male_pattern_terms.extend([term for term, _ in analysis_results['category_stats']['entertainment_authority']['top_terms'][:3]])
-            
-            # Get female-associated pattern terms (competence/organization + warmth/nurturing)
-            female_pattern_terms = []
-            if 'competence_organization' in analysis_results['category_stats'] and analysis_results['category_stats']['competence_organization']['top_terms']:
-                female_pattern_terms.extend([term for term, _ in analysis_results['category_stats']['competence_organization']['top_terms'][:3]])
-            
-            if 'warmth_nurturing' in analysis_results['category_stats'] and analysis_results['category_stats']['warmth_nurturing']['top_terms']:
-                female_pattern_terms.extend([term for term, _ in analysis_results['category_stats']['warmth_nurturing']['top_terms'][:3]])
-        
-        # Strong overall gender bias detected
-        if abs(bias_score) > 0.3:
-            bias_direction = "male-associated" if bias_score > 0 else "female-associated"
-            supporting_evidence = male_pattern_terms if bias_score > 0 else female_pattern_terms
-            if not supporting_evidence:
-                supporting_evidence = male_terms if bias_score > 0 else female_terms
-                
+        insights = analysis_results.get('insights', [])
+        interpretations = analysis_results.get('interpretation_summary', {})
+        descriptor_bias = analysis_results.get('descriptor_bias_score', 0)
+
+        # Helper to check for specific insight keywords
+        def has_insight(keywords):
+            return any(keyword.lower() in insight.lower() for insight in insights for keyword in keywords)
+
+        # 1. Recommendation based on predominant negative bias interpretation
+        neg_bias_interp = None
+        for interp, count in interpretations.items():
+             if "negative bias" in interp.lower():
+                 # Check if this is the most common or very frequent
+                 if count / analysis_results['comment_count'] > 0.2: # If > 20% comments show negative bias
+                     neg_bias_interp = interp
+                     break
+
+        if neg_bias_interp:
             recommendations.append({
-                'text': f"Student feedback shows potential bias toward {bias_direction} language. Consider using a diverse range of teaching examples and materials.",
+                'text': f"A significant portion of feedback indicates potential negative gender bias ('{neg_bias_interp}'). Review feedback for patterns of gendered criticism and consider workshops on equitable evaluation.",
                 'priority': 'high',
-                'impact_score': 8.5,
-                'supporting_evidence': supporting_evidence
+                'impact_score': 9.0,
+                'supporting_evidence': ["See 'Predominant Finding' insight and negative term frequencies."]
             })
-        
-        # Different bias patterns in positive vs negative comments
-        if abs(pos_bias - neg_bias) > 0.3:
-            if pos_bias > neg_bias:
-                recommendations.append({
-                    'text': "Positive comments show more male-biased language than negative comments. This may indicate gender-based expectations for praise.",
-                    'priority': 'medium',
-                    'impact_score': 7.0,
-                    'supporting_evidence': male_terms or male_pattern_terms
-                })
-            else:
-                recommendations.append({
-                    'text': "Negative comments show more male-biased language than positive comments. Consider how different standards may be applied in criticism.",
-                    'priority': 'medium',
-                    'impact_score': 7.0,
-                    'supporting_evidence': male_terms or male_pattern_terms
-                })
-        
-        # Descriptor bias recommendation
-        if abs(descriptor_bias) > 0.25:
-            if descriptor_bias > 0:
-                recommendations.append({
-                    'text': "Students focus more on your intellect, achievement, and entertainment value than professional competence and organization, which may reflect gender bias in student expectations.",
-                    'priority': 'medium',
-                    'impact_score': 7.0,
-                    'supporting_evidence': male_pattern_terms
-                })
-            else:
-                recommendations.append({
-                    'text': "Students focus more on your professional competence, organization, and nurturing qualities than intellect and authority, which may reflect gender bias in how students evaluate professors.",
-                    'priority': 'medium',
-                    'impact_score': 6.5,
-                    'supporting_evidence': female_pattern_terms
-                })
-        
-        # Low rating with high gender bias
-        if (metrics.get('avg_rating', 0) < 3.5 and abs(bias_score) > 0.2):
+
+        # 2. Recommendation based on stereotypical positive praise
+        pos_bias_interp = None
+        for interp, count in interpretations.items():
+            if "stereotypical praise" in interp.lower():
+                 if count / analysis_results['comment_count'] > 0.25: # If > 25% comments show stereotypical praise
+                     pos_bias_interp = interp
+                     break
+        if pos_bias_interp:
+             recommendations.append({
+                'text': f"Feedback often relies on stereotypical praise ('{pos_bias_interp}'). Aim to solicit and acknowledge feedback on a broader range of professional attributes.",
+                'priority': 'medium',
+                'impact_score': 7.0,
+                'supporting_evidence': ["See interpretation summary and descriptor category stats."]
+             })
+
+        # 3. Recommendation based on strong descriptor focus skew
+        if has_insight(["strong focus skew", "heavily emphasize"]):
+            focus = "male-associated (intellect/entertainment)" if descriptor_bias > 0 else "female-associated (competence/warmth)"
             recommendations.append({
-                'text': "Lower ratings show significant gender-biased language. Consider if teaching practices might benefit from more inclusive approaches.",
-                'priority': 'medium', 
-                'impact_score': 7.5,
-                'supporting_evidence': []
+                'text': f"Evaluations show a strong skew towards focusing on {focus} descriptors. This might reflect student bias. Ensure course materials and assessments highlight diverse strengths.",
+                'priority': 'medium',
+                'impact_score': 6.5,
+                'supporting_evidence': ["See 'Strong Focus Skew' insight."]
             })
-            
+
+        # 4. Recommendation if low ratings correlate with bias indicators
+        avg_rating = metrics.get('avg_rating', 5.0) # Default high if no metrics
+        if avg_rating < 3.5 and (neg_bias_interp or pos_bias_interp or abs(descriptor_bias) > 0.2):
+             recommendations.append({
+                'text': "Lower overall ratings coincide with indicators of potential gender bias in comments. Explore inclusive teaching strategies to address potential underlying issues.",
+                'priority': 'high',
+                'impact_score': 8.0,
+                'supporting_evidence': [f"Avg Rating: {avg_rating:.2f}", "Review bias interpretations and insights."]
+             })
+
+        # 5. General recommendation if bias patterns are present but not extreme
+        if not recommendations and (abs(descriptor_bias) > 0.15 or any("bias" in interp.lower() for interp in interpretations)):
+             recommendations.append({
+                 'text': f"Some language patterns suggest potential gender bias. Regularly reflect on feedback through a bias lens and seek diverse perspectives on teaching effectiveness.",
+                 'priority': 'low',
+                 'impact_score': 5.0,
+                 'supporting_evidence': ["Review descriptor focus and interpretation summary."]
+             })
+
         return recommendations
 
     @action(detail=False, methods=['post'], url_path='upload-evaluation-data', permission_classes=[permissions.AllowAny])
