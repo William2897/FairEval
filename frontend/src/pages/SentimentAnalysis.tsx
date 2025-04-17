@@ -105,7 +105,7 @@ function SentimentAnalysis() {
             </div>
 
             {/* Add the new Gender Bias Analysis section */}
-            <div>
+            {/* <div>
               <h2 className="text-xl font-bold text-gray-900 mb-4">Gender Bias Analysis</h2>
               <ProfessorBiasDashboard professorId={user.username} />
             </div>
@@ -113,7 +113,7 @@ function SentimentAnalysis() {
             <div>
               <h2 className="text-xl font-bold text-gray-900 mb-4">Recommendations</h2>
               <RecommendationDisplay professorId={user.username} />
-            </div>
+            </div> */}
           </>
         )}
 
