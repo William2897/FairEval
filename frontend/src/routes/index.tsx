@@ -18,6 +18,19 @@ function PrivateRoute({ children }: PrivateRouteProps) {
   return isAuthenticated ? <>{children}</> : <Navigate to="/login" />;
 }
 
+// AdminRoute component that checks for ADMIN role
+interface AdminRouteProps {
+  children: React.ReactNode;
+}
+
+function AdminRoute({ children }: AdminRouteProps) {
+  const { isAuthenticated, user } = useAuth();
+  if (!isAuthenticated) {
+    return <Navigate to="/login" />;
+  }
+  return user?.role?.role === 'ADMIN' ? <>{children}</> : <Navigate to="/" />;
+}
+
 const router = createBrowserRouter([
   {
     path: '/',
@@ -35,7 +48,7 @@ const router = createBrowserRouter([
       },
       {
         path: 'evaluations',
-        element: <Evaluations />,
+        element: <AdminRoute><Evaluations /></AdminRoute>,
       },
       {
         path: 'sentiment',

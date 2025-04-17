@@ -16,7 +16,7 @@ import {
 function Layout({ children }: { children: React.ReactNode }) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 1024);
-  const { logout } = useAuth();
+  const { logout, user } = useAuth();
   const location = useLocation();
 
   useEffect(() => {
@@ -34,9 +34,13 @@ function Layout({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  // Define navigation items based on user role
   const navItems = [
     { to: '/', icon: <LayoutDashboard size={20} />, label: 'Dashboard' },
-    { to: '/evaluations', icon: <FileText size={20} />, label: 'Evaluations' },
+    // Only show Evaluations tab for ADMIN users
+    ...(user?.role?.role === 'ADMIN' ? [
+      { to: '/evaluations', icon: <FileText size={20} />, label: 'Evaluations' }
+    ] : []),
     { to: '/sentiment', icon: <BarChart size={20} />, label: 'Sentiment Analysis' },
     { to: '/settings', icon: <Settings size={20} />, label: 'Settings' }
   ];
