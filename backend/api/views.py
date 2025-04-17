@@ -841,22 +841,52 @@ class RatingViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         queryset = Rating.objects.select_related('professor').all()
         return queryset
-        
+    
     def destroy(self, request, *args, **kwargs):
-        """Override destroy method to delete course evaluation"""
+        """Override destroy method to delete course evaluation and related sentiments"""
         try:
             instance = self.get_object()
+            
+            # Get the professor_id before deleting the rating
+            professor_id = instance.professor.professor_id
+            
+            # Delete associated sentiments first
+            from api.models import Sentiment
+            # Use the same created_at timestamp to identify sentiments associated with this rating
+            sentiments_deleted = Sentiment.objects.filter(
+                professor_id=professor_id,
+                created_at=instance.created_at
+            ).delete()
+            
+            # Then delete the rating itself
             self.perform_destroy(instance)
-            return Response({"message": "Evaluation deleted successfully"}, status=status.HTTP_204_NO_CONTENT)
+            
+            # Clear relevant caches - manually delete common cache keys
+            from django.core.cache import cache
+            cache_keys = [
+                f'institution_sentiment_summary_page_1',
+                f'gender_ratings_comparison',
+                f'rating_stats',
+                f'discipline_stats'
+            ]
+            for key in cache_keys:
+                cache.delete(key)
+            
+            return Response({
+                "message": "Evaluation deleted successfully",
+                "sentiments_deleted": sentiments_deleted[0] if isinstance(sentiments_deleted, tuple) else 0
+            }, status=status.HTTP_204_NO_CONTENT)
         except Exception as e:
             import traceback
             print(f"Error in destroy method: {str(e)}")
-            print(traceback.format_exc())
+            print(traceback.format_exc())            
+            
             return Response({"error": f"Error deleting evaluation: {str(e)}"}, 
-                            status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                        status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                        
     @action(detail=False, methods=['post', 'delete'])
     def bulk_delete(self, request):
-        """Bulk delete multiple ratings"""
+        """Bulk delete multiple ratings and their associated sentiments"""
         try:
             # Handle both POST and DELETE requests
             if request.method == 'DELETE':
@@ -878,12 +908,38 @@ class RatingViewSet(viewsets.ModelViewSet):
             # Count how many were found
             found_count = ratings_to_delete.count()
             
-            # Perform the delete
+            # First, delete associated sentiments for each rating
+            from api.models import Sentiment
+            sentiments_deleted_count = 0
+            
+            # Get all professors and timestamps from ratings to be deleted
+            professor_timestamp_pairs = ratings_to_delete.values_list('professor__professor_id', 'created_at')
+              # Delete sentiments that match these professor/timestamp pairs
+            for professor_id, timestamp in professor_timestamp_pairs:
+                result = Sentiment.objects.filter(
+                    professor_id=professor_id, 
+                    created_at=timestamp
+                ).delete()
+                sentiments_deleted_count += result[0] if isinstance(result, tuple) else 0
+                
+                # Clear relevant caches - manually delete common cache keys
+                from django.core.cache import cache
+                cache_keys = [
+                    f'institution_sentiment_summary_page_1',
+                    f'gender_ratings_comparison',
+                    f'rating_stats',
+                    f'discipline_stats'
+                ]
+                for key in cache_keys:
+                    cache.delete(key)
+            
+            # Now delete the ratings
             ratings_to_delete.delete()
             
             return Response({
-                "message": f"Successfully deleted {found_count} ratings",
-                "deleted_count": found_count
+                "message": f"Successfully deleted {found_count} ratings and {sentiments_deleted_count} associated comments",
+                "deleted_count": found_count,
+                "sentiments_deleted": sentiments_deleted_count
             }, status=status.HTTP_200_OK)
             
         except Exception as e:

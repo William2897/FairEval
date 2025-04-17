@@ -128,6 +128,9 @@ const deleteMutation = useMutation({
     queryClient.invalidateQueries({ queryKey: ['sentiment-analysis'] });
     queryClient.invalidateQueries({ queryKey: ['discipline-stats'] });
     queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] });
+    // Additional invalidations for professor-specific views to ensure they reflect deleted data
+    queryClient.invalidateQueries({ queryKey: ['professorBiasAnalysis'] });
+    queryClient.invalidateQueries({ queryKey: ['sentimentSummary'] });
     
     const csrfToken = getCsrfToken();
     if (!csrfToken) throw new Error("CSRF Token not found");
@@ -220,6 +223,10 @@ const deleteMutation = useMutation({
       queryClient.invalidateQueries({ queryKey: ['sentiment-analysis'] });
       queryClient.invalidateQueries({ queryKey: ['discipline-stats'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] }); // Add this to update the Dashboard count
+      // Additional invalidations for professor-specific views
+      queryClient.invalidateQueries({ queryKey: ['professorBiasAnalysis'] });
+      queryClient.invalidateQueries({ queryKey: ['sentimentSummary'] });
+      queryClient.invalidateQueries({ queryKey: [''] });
       console.log("Ratings query invalidated after bulk delete.");
 
       setBulkDeleteConfirmation(false); // Close bulk delete modal
