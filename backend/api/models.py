@@ -65,10 +65,44 @@ class Sentiment(models.Model):
     negative_terms_vader = models.JSONField(null=True)
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
 
+    # --- NEW BIAS FIELDS ---
+    bias_tag = models.CharField(
+        max_length=20, # e.g., 'POS_BIAS_M', 'NEG_BIAS_F', 'OBJECTIVE', 'NEUTRAL'
+        choices=[
+            ('POS_BIAS_M', 'Positive Male Bias'),
+            ('POS_BIAS_F', 'Positive Female Bias'),
+            ('NEG_BIAS_M', 'Negative Male Bias'),
+            ('NEG_BIAS_F', 'Negative Female Bias'),
+            ('OBJECTIVE', 'Objective Focus'),
+            ('NEUTRAL', 'Neutral Pattern'),
+            ('UNKNOWN', 'Unknown/Error'),
+        ],
+        null=True,
+        blank=True,
+        db_index=True
+    )
+    bias_interpretation = models.TextField(
+        null=True,
+        blank=True,
+        help_text="Main textual interpretation from the bias explainer."
+    )
+    stereotype_bias_score = models.FloatField(
+        null=True,
+        blank=True,
+        help_text="Score indicating balance of stereotypical terms (-1 Female, +1 Male)."
+    )
+    objective_focus_percentage = models.FloatField(
+        null=True,
+        blank=True,
+        help_text="Percentage of attention focused on objective pedagogical terms."
+    )
+    # --- END NEW BIAS FIELDS ---
     class Meta:
         indexes = [
             models.Index(fields=['professor', 'sentiment']),
             models.Index(fields=['professor', 'created_at']),
+            models.Index(fields=['bias_tag']), # Add index for bias tag filtering
+
         ]
 
     def __str__(self):

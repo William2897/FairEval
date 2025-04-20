@@ -2,7 +2,7 @@
 
 import os
 import django
-from data_processing.pipeline import run_db_population
+from data_processing.pipeline import run_initial_processing, run_bias_analysis_only, run_db_population
 
 # Set up Django environment before importing settings
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'faireval.settings')
@@ -10,7 +10,6 @@ django.setup()
 
 # settings after Django is configured
 from django.conf import settings
-from data_processing.pipeline import run_full_pipeline
 
 db_config = {
     'dbname': settings.DATABASES['default']['NAME'],
@@ -20,10 +19,17 @@ db_config = {
     'port': settings.DATABASES['default']['PORT']
 }
 
-csv_file = "professors_75346.csv"
+# Step 1 and 2: Initial preprocessing of the CSV file
+# raw_csv = "professors_75346.csv"
+# processed_csv = run_initial_processing(raw_csv)
+# if processed_csv:
+#     print(f"Initial processing complete. Result in: {processed_csv}")
 
 if __name__ == "__main__":
-    run_full_pipeline(csv_file, db_config)
+    processed_csv = "professors_75346_processed.csv" # Use the output from step 1 and
+    output_bias_csv = "professors_75346_with_bias.csv"
+    #final_csv = run_bias_analysis_only(processed_csv, output_bias_csv, chunk_size=1000)
+    run_db_population(output_bias_csv, db_config)
 
 # processed_csv = "professors_75346_processed.csv"
 # run_db_population(processed_csv, db_config)

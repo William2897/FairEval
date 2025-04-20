@@ -2,12 +2,10 @@ import { useAuth } from '../contexts/AuthContext';
 import { CommentSummaryDisplay } from '../components/CommentSummaryDisplay';
 import { WordCloudVisualization } from '../components/WordCloudVisualization';
 import { GenderSentimentVisualization } from '../components/GenderSentimentVisualization';
-import { RecommendationDisplay } from '../components/RecommendationDisplay';
 import { BiasExplainer } from '../components/BiasExplainer';
 import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
 import { Tab, TabPanel, TabPanels, TabGroup, TabList } from '@headlessui/react';
-import { ProfessorBiasDashboard } from '../components/ProfessorBiasDashboard';
 
 interface WordCloudData {
   vader: {
@@ -105,15 +103,10 @@ function SentimentAnalysis() {
             </div>
 
             {/* Add the new Gender Bias Analysis section */}
-            {/* <div>
-              <h2 className="text-xl font-bold text-gray-900 mb-4">Gender Bias Analysis</h2>
-              <ProfessorBiasDashboard professorId={user.username} />
-            </div>
-            
             <div>
-              <h2 className="text-xl font-bold text-gray-900 mb-4">Recommendations</h2>
-              <RecommendationDisplay professorId={user.username} />
-            </div> */}
+              <h2 className="text-xl font-bold text-gray-900 mb-4">Gender Bias Explainer</h2>
+              <BiasExplainer />
+            </div>
           </>
         )}
 

@@ -54,6 +54,11 @@ class RatingSerializer(serializers.ModelSerializer):
                  'difficulty_rating', 'is_online', 'is_for_credit', 'created_at']
 
 class SentimentSerializer(serializers.ModelSerializer):
+    # Add the new fields here, mark as read_only
+    bias_tag = serializers.CharField(read_only=True)
+    bias_interpretation = serializers.CharField(read_only=True)
+    stereotype_bias_score = serializers.FloatField(read_only=True)
+    objective_focus_percentage = serializers.FloatField(read_only=True)
     class Meta:
         model = Sentiment
         fields = '__all__'

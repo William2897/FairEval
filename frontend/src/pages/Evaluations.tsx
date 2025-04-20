@@ -1,9 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Loader2, Search, Filter, AlertOctagon, ChevronUp, ChevronDown, X, ChevronLeft, ChevronRight, Trash2, CheckSquare, Square } from 'lucide-react';
-import { useState, useMemo, useEffect, useCallback } from 'react';
+import { Loader2, Search, Filter, AlertOctagon, ChevronUp, ChevronDown, X, ChevronLeft, ChevronRight, Trash2 } from 'lucide-react';
+import { useState, useEffect} from 'react';
 import { CommentSummaryDisplay } from '../components/CommentSummaryDisplay';
 import { DataUploadForm } from '../components/DataUploadForm';
-import { RecommendationDisplay } from '../components/RecommendationDisplay';
 import { useAuth } from '../contexts/AuthContext';
 import axios, { AxiosError } from 'axios'; // Import AxiosError for better typing
 
@@ -708,13 +707,6 @@ const deleteMutation = useMutation({
                 Comment Analysis
               </h2>
               <CommentSummaryDisplay professorId={selectedProfessorId.toString()} />
-            </div>
-
-            <div className="bg-white shadow-md rounded-lg p-6">
-              <h2 className="text-xl font-semibold text-gray-900 mb-4">
-                Improvement Recommendations
-              </h2>
-              <RecommendationDisplay professorId={selectedProfessorId.toString()} />
             </div>
           </div>
         )}
