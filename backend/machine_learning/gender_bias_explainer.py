@@ -2,10 +2,9 @@
 
 import torch
 import numpy as np
-import matplotlib.pyplot as plt
+import pandas as pd
 from collections import defaultdict, Counter
 import os
-import json
 from tqdm import tqdm # Optional: Can use in batch processing if needed
 
 # --- Define LEXICONS (Updated as per previous refinement) ---

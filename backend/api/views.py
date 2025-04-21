@@ -1035,8 +1035,10 @@ class RatingViewSet(viewsets.ModelViewSet):
         fs = FileSystemStorage(location=temp_dir)
         filename = fs.save(file.name, file)
         file_path = os.path.join(temp_dir, filename)
-        
+        print(f"DEBUG: File saved to {file_path}")
+
         try:
+            print("DEBUG: Inside try block") # ADD THIS
             # Configure database connection
             db_config = {
                 'dbname': settings.DATABASES['default']['NAME'],
@@ -1045,27 +1047,35 @@ class RatingViewSet(viewsets.ModelViewSet):
                 'host': settings.DATABASES['default']['HOST'],
                 'port': settings.DATABASES['default']['PORT']
             }
-            
-            from data_processing.pipeline import run_full_pipeline
+            print(f"DEBUG: DB Config: {db_config}") # ADD THIS
+
+            # from data_processing.pipeline import run_full_pipeline # Not used here anymore
             from api.tasks import process_evaluation_data_task
-            
+            print("DEBUG: Imported process_evaluation_data_task") # ADD THIS
+
             # Run the data processing task asynchronously
+            print("DEBUG: Calling process_evaluation_data_task.delay...") # ADD THIS
             task = process_evaluation_data_task.delay(file_path, db_config)
-            
+            print(f"DEBUG: Task submitted with ID: {task.id}") # ADD THIS
+
             return Response({
                 "message": "File uploaded successfully. Processing has begun.",
                 "task_id": task.id
             }, status=status.HTTP_202_ACCEPTED)
-            
+
         except Exception as e:
+            print(f"DEBUG: Caught exception in upload: {type(e).__name__} - {str(e)}") # ADD THIS
             # Clean up the file
             if os.path.exists(file_path):
                 os.remove(file_path)
-                
+
             import traceback
+            print("DEBUG: Formatting traceback...") # ADD THIS
+            tb_str = traceback.format_exc()
+            print(f"DEBUG: Traceback:\n{tb_str}") # ADD THIS
             return Response({
                 "error": f"Error processing file: {str(e)}",
-                "details": traceback.format_exc()
+                "details": tb_str # Use the formatted traceback string
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
             
     @action(detail=False, methods=['get'])
@@ -1206,8 +1216,10 @@ class SentimentExplainabilityViewSet(viewsets.ViewSet):
         fs = FileSystemStorage(location=temp_dir)
         filename = fs.save(file.name, file)
         file_path = os.path.join(temp_dir, filename)
-        
+        print(f"DEBUG: File saved to {file_path}")
+
         try:
+            print("DEBUG: Inside try block") # ADD THIS
             # Configure database connection
             db_config = {
                 'dbname': settings.DATABASES['default']['NAME'],
@@ -1216,25 +1228,35 @@ class SentimentExplainabilityViewSet(viewsets.ViewSet):
                 'host': settings.DATABASES['default']['HOST'],
                 'port': settings.DATABASES['default']['PORT']
             }
-            
-            from data_processing.pipeline import run_full_pipeline
+            print(f"DEBUG: DB Config: {db_config}") # ADD THIS
+
+            # from data_processing.pipeline import run_full_pipeline # Not used here anymore
             from api.tasks import process_evaluation_data_task
-            
+            print("DEBUG: Imported process_evaluation_data_task") # ADD THIS
+
             # Run the data processing task asynchronously
+            print("DEBUG: Calling process_evaluation_data_task.delay...") # ADD THIS
             task = process_evaluation_data_task.delay(file_path, db_config)
-            
+            print(f"DEBUG: Task submitted with ID: {task.id}") # ADD THIS
+
             return Response({
                 "message": "File uploaded successfully. Processing has begun.",
                 "task_id": task.id
             }, status=status.HTTP_202_ACCEPTED)
-            
+
         except Exception as e:
+            print(f"DEBUG: Caught exception in upload: {type(e).__name__} - {str(e)}") # ADD THIS
             # Clean up the file
             if os.path.exists(file_path):
                 os.remove(file_path)
-                
+
+            import traceback
+            print("DEBUG: Formatting traceback...") # ADD THIS
+            tb_str = traceback.format_exc()
+            print(f"DEBUG: Traceback:\n{tb_str}") # ADD THIS
             return Response({
-                "error": f"Error processing file: {str(e)}"
+                "error": f"Error processing file: {str(e)}",
+                "details": tb_str # Use the formatted traceback string
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
             
     @action(detail=False, methods=['get'])
