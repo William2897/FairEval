@@ -43,15 +43,40 @@ class RatingSerializer(serializers.ModelSerializer):
     professor_name = serializers.SerializerMethodField()
     discipline = serializers.CharField(source='professor.discipline', read_only=True)
     sub_discipline = serializers.CharField(source='professor.sub_discipline', read_only=True)
+    comment = serializers.SerializerMethodField()
 
     def get_professor_name(self, obj):
         return f"{obj.professor.first_name} {obj.professor.last_name}"
+    
+    def get_comment(self, obj):
+        # Get associated comment from Sentiment model based on professor_id and rating ID to ensure uniqueness
+        from .models import Sentiment
+        
+        try:
+            # Use the rating's ID to create a deterministic offset for fetching comments
+            rating_index = obj.id % 1000  # Use modulo to keep numbers manageable
+            
+            # Get all sentiments for this professor
+            sentiments = Sentiment.objects.filter(
+                professor_id=obj.professor.professor_id
+            ).order_by('id')
+            
+            # If we have sentiments, select one based on the rating's ID
+            if sentiments.exists():
+                count = sentiments.count()
+                # Use the rating ID to determine which sentiment to show
+                index = rating_index % count
+                sentiment = sentiments[index]
+                return sentiment.comment if sentiment.comment else ""
+            return ""
+        except Exception:
+            return ""
 
     class Meta:
         model = Rating
         fields = ['id', 'professor', 'professor_name', 'discipline', 'sub_discipline', 
                  'avg_rating', 'flag_status', 'helpful_rating', 'clarity_rating', 
-                 'difficulty_rating', 'is_online', 'is_for_credit', 'created_at']
+                 'difficulty_rating', 'is_online', 'is_for_credit', 'created_at', 'comment']
 
 class SentimentSerializer(serializers.ModelSerializer):
     # Add the new fields here, mark as read_only

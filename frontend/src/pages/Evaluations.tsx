@@ -1,9 +1,10 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Loader2, Search, Filter, AlertOctagon, ChevronUp, ChevronDown, X, ChevronLeft, ChevronRight, Trash2 } from 'lucide-react';
-import { useState, useEffect} from 'react';
+import { Loader2, Search, AlertOctagon, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Trash2 } from 'lucide-react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { CommentSummaryDisplay } from '../components/CommentSummaryDisplay';
 import { DataUploadForm } from '../components/DataUploadForm';
 import { useAuth } from '../contexts/AuthContext';
+import { useDebounce } from '../hooks/useDebounce';
 import axios, { AxiosError } from 'axios'; // Import AxiosError for better typing
 
 // --- Interface definitions remain the same ---
@@ -21,13 +22,7 @@ interface Rating {
   is_online: boolean;
   is_for_credit: boolean;
   created_at: string;
-}
-
-interface FilterState {
-  search: string;
-  ratingMin: number;
-  isOnline: boolean | null;
-  isForCredit: boolean | null;
+  comment: string | null;
 }
 
 interface PaginatedResponse {
@@ -61,13 +56,7 @@ function Evaluations() {
     key: 'created_at',
     direction: 'desc'
   });
-  const [showFilters, setShowFilters] = useState(false);
-  const [filters, setFilters] = useState<FilterState>({
-    search: '',
-    ratingMin: 0,
-    isOnline: null,
-    isForCredit: null
-  });
+  const [searchTerm, setSearchTerm] = useState('');
   const [deleteConfirmation, setDeleteConfirmation] = useState<{showModal: boolean; ratingId: number | null}>({
     showModal: false,
     ratingId: null
@@ -79,25 +68,33 @@ function Evaluations() {
   const [rowsBeingDeleted, setRowsBeingDeleted] = useState<Set<number>>(new Set()); // Track rows being deleted
   const queryClient = useQueryClient();
 
-  const queryKey = ['ratings', currentPage, filters, sortConfig];
+  // Debounce the search term
+  const debouncedSearchTerm = useDebounce(searchTerm, 400);
 
-  const { data: paginatedData, isLoading, isFetching } = useQuery<PaginatedResponse, Error, PaginatedResponse>({ // Added explicit type parameters
+  // Querykeys now use debouncedSearchTerm instead of debouncedFilters
+  const queryKey = ['ratings', currentPage, debouncedSearchTerm, sortConfig];
+
+  const { data: paginatedData, isLoading, isFetching } = useQuery<PaginatedResponse, Error, PaginatedResponse>({
     queryKey: queryKey,
     queryFn: async () => {
-      const params = new URLSearchParams({
+      // Create params object with only necessary parameters
+      const paramsObj: Record<string, string> = {
         page: currentPage.toString(),
-        limit: '50', // Explicitly set limit if backend default isn't 50
-        ...(filters.search && { search: filters.search }),
-        ...(filters.ratingMin > 0 && { min_rating: filters.ratingMin.toString() }),
-        ...(filters.isOnline !== null && { is_online: filters.isOnline.toString() }),
-        ...(filters.isForCredit !== null && { is_for_credit: filters.isForCredit.toString() }),
+        limit: '50', // Explicitly set limit
+        // Only include search if debouncedSearchTerm is not empty
+        ...(debouncedSearchTerm && { search: debouncedSearchTerm }),
         ...(sortConfig && { ordering: `${sortConfig.direction === 'desc' ? '-' : ''}${sortConfig.key}` })
-      });
+      };
+
+      // Filter out empty parameters to keep the URL clean
+      const params = new URLSearchParams(
+        Object.entries(paramsObj).filter(([_, value]) => value !== undefined && value !== '')
+      );
 
       const { data } = await axios.get<PaginatedResponse>(`/api/ratings/?${params}`);
       return data;
     },
-     placeholderData: previous => previous, // Modern equivalent of keepPreviousData
+    placeholderData: previous => previous, // Modern equivalent of keepPreviousData
   });
 
   const showSuccess = (message: string) => {
@@ -143,7 +140,7 @@ const deleteMutation = useMutation({
       withCredentials: true
     });
   },
-  onSuccess: (data, variables) => {
+  onSuccess: (_, variables) => {
     console.log("Successfully deleted rating ID:", variables);
     
     // Update selection state if the deleted row was selected
@@ -297,20 +294,6 @@ const deleteMutation = useMutation({
   };
 
   // --- Selection Handlers ---
-  const handleSelectRow = (e: React.ChangeEvent<HTMLInputElement>, id: number) => {
-    // e.stopPropagation(); // Optional: Prevent row click when clicking checkbox
-    const isChecked = e.target.checked;
-    setSelectedIds(prev => {
-      const newSet = new Set(prev);
-      if (isChecked) {
-        newSet.add(id);
-      } else {
-        newSet.delete(id);
-      }
-      return newSet;
-    });
-  };
-
   const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
     const isChecked = e.target.checked;
     if (isChecked) {
@@ -326,38 +309,83 @@ const deleteMutation = useMutation({
   // Reset selection when page changes or data reloads significantly
   useEffect(() => {
     setSelectedIds(new Set());
-  }, [currentPage, filters, sortConfig, paginatedData?.results]); // Reset if data changes
+  }, [currentPage, debouncedSearchTerm, sortConfig, paginatedData?.results]); // Reset if data changes
 
 
-  // Reset to first page when filters or sort change
+  // Reset to first page when search or sort change
   useEffect(() => {
     setCurrentPage(1);
-    // Selection is cleared by the effect above
-  }, [filters, sortConfig]);
+  }, [debouncedSearchTerm, sortConfig]);
 
-  const ratings = paginatedData?.results || [];
-  const totalCount = paginatedData?.count || 0;
+  // Optimized memoized values
+  const ratings = useMemo(() => paginatedData?.results || [], [paginatedData?.results]);
+  const totalCount = useMemo(() => paginatedData?.count || 0, [paginatedData?.count]);
   const itemsPerPage = 50; // Match the 'limit' param used in useQuery
-  const totalPages = totalCount > 0 ? Math.ceil(totalCount / itemsPerPage) : 1; // Ensure totalPages is at least 1
+  const totalPages = useMemo(() => 
+    totalCount > 0 ? Math.ceil(totalCount / itemsPerPage) : 1, 
+    [totalCount]
+  );
 
-  const isAllSelected = ratings.length > 0 && selectedIds.size === ratings.length && ratings.every((r: Rating) => selectedIds.has(r.id));
+  const isAllSelected = useMemo(() => 
+    ratings.length > 0 && 
+    selectedIds.size === ratings.length && 
+    ratings.every((r: Rating) => selectedIds.has(r.id)),
+    [ratings, selectedIds]
+  );
 
+  // Effect to prefetch the next page when we're close to it
+  useEffect(() => {
+    // Only prefetch if we're not on the last page
+    if (currentPage < totalPages) {
+      const nextPageParams = new URLSearchParams({
+        page: (currentPage + 1).toString(),
+        limit: '50'
+      });
 
-  const handleSort = (key: keyof Rating) => {
+      // Add only search and sort parameters to the prefetch query
+      if (debouncedSearchTerm) nextPageParams.set('search', debouncedSearchTerm);
+      if (sortConfig) nextPageParams.set('ordering', `${sortConfig.direction === 'desc' ? '-' : ''}${sortConfig.key}`);
+
+      // Prefetch the next page
+      queryClient.prefetchQuery({
+        queryKey: ['ratings', currentPage + 1, debouncedSearchTerm, sortConfig],
+        queryFn: async () => {
+          const { data } = await axios.get<PaginatedResponse>(`/api/ratings/?${nextPageParams}`);
+          return data;
+        }
+      });
+    }
+  }, [currentPage, debouncedSearchTerm, sortConfig, totalPages, queryClient]);
+
+  // Optimized event handlers with useCallback
+  const handleSort = useCallback((key: keyof Rating) => {
     setSortConfig(current => ({
       key,
       direction: current.key === key && current.direction === 'asc' ? 'desc' : 'asc'
     }));
-  };
+  }, []);
 
-  const SortIndicator = ({ column }: { column: keyof Rating }) => {
+  const handleSelectRow = useCallback((e: React.ChangeEvent<HTMLInputElement>, id: number) => {
+    const isChecked = e.target.checked;
+    setSelectedIds(prev => {
+      const newSet = new Set(prev);
+      if (isChecked) {
+        newSet.add(id);
+      } else {
+        newSet.delete(id);
+      }
+      return newSet;
+    });
+  }, []);
+
+  const SortIndicator = useCallback(({ column }: { column: keyof Rating }) => {
     if (sortConfig.key !== column) return null;
     return sortConfig.direction === 'asc' ? <ChevronUp size={16} /> : <ChevronDown size={16} />;
-  };
+  }, [sortConfig]);
 
   // Use `isLoading` for initial load, `isFetching` for background updates
-   const showInitialLoader = isLoading && !paginatedData;
-   const showRefetchOverlay = isFetching && paginatedData;
+  const showInitialLoader = isLoading && !paginatedData;
+  const showRefetchOverlay = isFetching && paginatedData;
 
 
   if (showInitialLoader) {
@@ -383,7 +411,7 @@ const deleteMutation = useMutation({
         </div>
       )}
 
-      {/* --- Filter UI remains the same --- */}
+      {/* --- Header Section --- */}
        <div className="flex flex-wrap justify-between items-center gap-4"> {/* Flex-wrap for responsiveness */}
         <h1 className="text-2xl font-bold text-gray-900">Course Evaluations</h1>
         <div className="flex items-center space-x-2 sm:space-x-4 flex-wrap gap-2"> {/* Flex-wrap + gap */}
@@ -402,97 +430,20 @@ const deleteMutation = useMutation({
                 <span>Delete ({selectedIds.size})</span>
               </button>
             )}
+          {/* Search Input */}
           <div className="relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
             <input
               type="text"
               placeholder="Search..." // Shorter placeholder
-              value={filters.search}
-              onChange={(e) => setFilters(prev => ({ ...prev, search: e.target.value }))}
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
               className="pl-10 pr-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 w-48 sm:w-auto" // Responsive width
+              title="Search by Professor Name, Discipline, or Sub-discipline" // Added tooltip
             />
           </div>
-          <button
-            onClick={() => setShowFilters(!showFilters)}
-            className={`flex items-center space-x-2 px-3 py-2 rounded-md ${ // Adjusted padding
-              showFilters
-                ? 'bg-indigo-100 text-indigo-700 border-indigo-200'
-                : 'bg-white border text-gray-700 hover:bg-gray-50'
-            } border`}
-          >
-            <Filter size={18} /> {/* Slightly smaller icon */}
-            <span>Filters</span>
-          </button>
         </div>
       </div>
-
-      {/* --- Filter Panel (no changes needed) --- */}
-      {showFilters && (
-        <div className="bg-white p-4 rounded-lg shadow border animate-fade-in-down"> {/* Added animation */}
-          {/* ... filter content remains the same */}
-           <div className="flex justify-between items-center mb-4">
-            <h3 className="font-medium text-gray-900">Filter Options</h3>
-            <button onClick={() => setShowFilters(false)} className="text-gray-500 hover:text-gray-700">
-              <X size={20} />
-            </button>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <label htmlFor="minRatingFilter" className="block text-sm font-medium text-gray-700 mb-1">
-                Minimum Rating
-              </label>
-              <select
-                id="minRatingFilter"
-                value={filters.ratingMin}
-                onChange={(e) => setFilters(prev => ({ ...prev, ratingMin: Number(e.target.value) }))}
-                className="w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500"
-              >
-                <option value={0}>All Ratings</option>
-                <option value={3}>3.0+</option>
-                <option value={4}>4.0+</option>
-                <option value={4.5}>4.5+</option>
-              </select>
-            </div>
-            <div>
-              <label htmlFor="courseTypeFilter" className="block text-sm font-medium text-gray-700 mb-1">
-                Course Type
-              </label>
-              <select
-                id="courseTypeFilter"
-                value={filters.isOnline === null ? '' : filters.isOnline.toString()}
-                onChange={(e) => setFilters(prev => ({
-                  ...prev,
-                  isOnline: e.target.value === '' ? null : e.target.value === 'true'
-                }))}
-                className="w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500"
-              >
-                <option value="">All Courses</option>
-                <option value="true">Online Only</option>
-                <option value="false">In-Person Only</option>
-              </select>
-            </div>
-            <div>
-              <label htmlFor="creditStatusFilter" className="block text-sm font-medium text-gray-700 mb-1">
-                Credit Status
-              </label>
-              <select
-                id="creditStatusFilter"
-                value={filters.isForCredit === null ? '' : filters.isForCredit.toString()}
-                onChange={(e) => setFilters(prev => ({
-                  ...prev,
-                  isForCredit: e.target.value === '' ? null : e.target.value === 'true'
-                }))}
-                className="w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500"
-              >
-                <option value="">All Types</option>
-                <option value="true">For Credit Only</option>
-                <option value="false">Not For Credit Only</option>
-              </select>
-            </div>
-          </div>
-        </div>
-      )}
-
 
       <div className="grid gap-6">
         <div className="bg-white shadow-md rounded-lg overflow-hidden">
@@ -526,6 +477,7 @@ const deleteMutation = useMutation({
                     { key: 'helpful_rating', label: 'Helpful' },
                     { key: 'clarity_rating', label: 'Clarity' },
                     { key: 'difficulty_rating', label: 'Difficulty' },
+                    { key: 'comment', label: 'Comment' },
                     { key: 'created_at', label: 'Date' }
                   ].map(({ key, label }) => (
                     <th
@@ -606,6 +558,11 @@ const deleteMutation = useMutation({
                         <td className="px-6 py-4 whitespace-nowrap">{rating.helpful_rating?.toFixed(1) || <span className="text-gray-400">N/A</span>}</td>
                         <td className="px-6 py-4 whitespace-nowrap">{rating.clarity_rating?.toFixed(1) || <span className="text-gray-400">N/A</span>}</td>
                         <td className="px-6 py-4 whitespace-nowrap">{rating.difficulty_rating?.toFixed(1) || <span className="text-gray-400">N/A</span>}</td>
+                        <td className="px-6 py-4 max-w-xs">
+                          <div className="truncate text-sm" title={rating.comment || ""}>
+                            {rating.comment || <span className="text-gray-400">No comment</span>}
+                          </div>
+                        </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                           {new Date(rating.created_at).toLocaleDateString()}
                         </td>
@@ -655,7 +612,7 @@ const deleteMutation = useMutation({
                 })}
                  {ratings.length === 0 && !isFetching && ( // Show only if not fetching and no ratings
                     <tr>
-                        <td colSpan={12} className="text-center py-10 text-gray-500"> {/* Adjusted colspan */}
+                        <td colSpan={11} className="text-center py-10 text-gray-500"> {/* Adjusted colspan */}
                             No evaluations found matching your criteria.
                         </td>
                     </tr>
@@ -718,6 +675,7 @@ const deleteMutation = useMutation({
         )}
       </div>
 
+      {/* Delete Confirmation Modal */}
       {deleteConfirmation.showModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60]" 
             aria-labelledby="modal-title" 
