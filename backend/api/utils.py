@@ -74,7 +74,7 @@ def calculate_professor_metrics(professor_id):
 
     return metrics
 
-def get_sentiment_summary(professor_id=None, institution=False, page=1, page_size=10):
+def get_sentiment_summary(professor_id=None, institution=False, page=1, page_size=20, include_aggregate_stats=False):
     """Get sentiment analysis summary for a professor or institution-wide, including bias tags."""
     # Import models here if initial import failed
     global Professor, Sentiment
@@ -120,6 +120,47 @@ def get_sentiment_summary(professor_id=None, institution=False, page=1, page_siz
         # --- END NEW BIAS FIELDS ---
     ))
     print(f"Fetched {len(paginated_comments)} comments for page {page}.")
+
+    # --- Calculate Aggregate Bias Statistics if requested ---
+    aggregate_bias_stats = None
+    if include_aggregate_stats:
+        print("Calculating aggregate bias statistics...")
+        
+        # Function to calculate bias distribution for a specific sentiment value
+        def calculate_bias_distribution(sentiment_value):
+            # Get all comments with this sentiment (not just paginated ones)
+            sentiment_comments = list(sentiments_qs.filter(sentiment=sentiment_value).values('bias_tag'))
+            
+            # Count occurrences of each bias tag
+            tag_counts = {}
+            total_comments = len(sentiment_comments)
+            
+            for comment in sentiment_comments:
+                tag = comment['bias_tag'] or 'UNKNOWN'
+                tag_counts[tag] = tag_counts.get(tag, 0) + 1
+            
+            # Calculate percentages
+            bias_distribution = {}
+            for tag, count in tag_counts.items():
+                percentage = (count / total_comments * 100) if total_comments > 0 else 0
+                bias_distribution[tag] = {
+                    'count': count,
+                    'percentage': f"{percentage:.1f}"
+                }
+            
+            return bias_distribution
+        
+        # Calculate distribution for both positive and negative sentiments
+        aggregate_bias_stats = {
+            'positive': {
+                'bias_distribution': calculate_bias_distribution(1)  # 1 = positive sentiment
+            },
+            'negative': {
+                'bias_distribution': calculate_bias_distribution(0)  # 0 = negative sentiment
+            }
+        }
+        
+        print("Aggregate bias statistics calculation complete.")
 
     # --- Calculate Sentiment Breakdown ---
     sentiment_breakdown = sentiments_qs.values('sentiment').annotate(count=Count('id'))
@@ -198,9 +239,7 @@ def get_sentiment_summary(professor_id=None, institution=False, page=1, page_siz
         terms_data.sort(key=lambda x: x['total_freq'], reverse=True)
         return terms_data[:50] # Limit results for performance
 
-    print("Gender analysis calculation done.")
-
-    # --- Assemble Final Summary ---
+    print("Gender analysis calculation done.")    # --- Assemble Final Summary ---
     summary = {
         'total_comments': total_comments,
         'total_pages': total_pages,
@@ -238,6 +277,10 @@ def get_sentiment_summary(professor_id=None, institution=False, page=1, page_siz
         # ),
         'comments': paginated_comments # This list now contains the bias fields
     }
+    
+    # Include aggregate bias statistics if requested
+    if include_aggregate_stats and aggregate_bias_stats:
+        summary['aggregate_bias_stats'] = aggregate_bias_stats
 
     return summary
 

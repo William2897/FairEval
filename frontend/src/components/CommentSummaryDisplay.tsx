@@ -23,6 +23,22 @@ interface SentimentSummary {
   }>;
   total_pages: number;
   message?: string;
+
+  // Add aggregate bias statistics for all comments
+  aggregate_bias_stats: {
+    positive: {
+      bias_distribution: Record<string, {
+        count: number;
+        percentage: string;
+      }>;
+    };
+    negative: {
+      bias_distribution: Record<string, {
+        count: number;
+        percentage: string;
+      }>;
+    };
+  };
 }
 
 interface CommentSummaryDisplayProps {
@@ -31,7 +47,8 @@ interface CommentSummaryDisplayProps {
 }
 
 const fetchSentimentSummary = async (professorId: string, page: number = 1): Promise<SentimentSummary> => {
-  const { data } = await axios.get(`/api/professors/${professorId}/sentiment-summary/?page=${page}`);
+  // Request aggregate stats along with paginated comments
+  const { data } = await axios.get(`/api/professors/${professorId}/sentiment-summary/?page=${page}&include_aggregate_stats=true`);
   return data;
 };
 
@@ -90,33 +107,9 @@ export const CommentSummaryDisplay: React.FC<CommentSummaryDisplayProps> = ({
   const positivePercentage = ((summary.sentiment_breakdown.positive / summary.total_comments) * 100).toFixed(1);
   const negativePercentage = ((summary.sentiment_breakdown.negative / summary.total_comments) * 100).toFixed(1);
 
-  // Calculate bias tag distributions
-  const calculateBiasDistribution = (comments: SentimentSummary['comments'], sentiment: number) => {
-    // Filter by sentiment
-    const filteredComments = comments.filter(c => c.sentiment === sentiment);
-    if (filteredComments.length === 0) return {};
-    
-    // Count occurrences of each bias tag
-    const tagCounts: Record<string, number> = {};
-    filteredComments.forEach(comment => {
-      const tag = comment.bias_tag || 'UNKNOWN';
-      tagCounts[tag] = (tagCounts[tag] || 0) + 1;
-    });
-    
-    // Calculate percentages
-    const tagPercentages: Record<string, string> = {};
-    const total = filteredComments.length;
-    
-    Object.entries(tagCounts).forEach(([tag, count]) => {
-      tagPercentages[tag] = ((count / total) * 100).toFixed(1);
-    });
-    
-    return { counts: tagCounts, percentages: tagPercentages };
-  };
-  
-  // Get bias tag distribution for positive and negative comments
-  const positiveBiasDistribution = calculateBiasDistribution(summary.comments, 1);
-  const negativeBiasDistribution = calculateBiasDistribution(summary.comments, 0);
+  // Use the aggregate bias statistics from the API response
+  const positiveBiasDistribution = summary.aggregate_bias_stats?.positive || { bias_distribution: {} };
+  const negativeBiasDistribution = summary.aggregate_bias_stats?.negative || { bias_distribution: {} };
   
   // Helper function to get label for bias tag
   const getBiasTagLabel = (tag: string): string => {
@@ -155,12 +148,14 @@ export const CommentSummaryDisplay: React.FC<CommentSummaryDisplayProps> = ({
             {/* Positive Bias Pattern Summary */}
             <div className="mt-2 border-t border-green-100 pt-3">
               <h4 className="text-sm font-medium text-gray-700 mb-2">Bias Pattern Summary:</h4>
-              {Object.keys(positiveBiasDistribution.percentages || {}).length > 0 ? (
+              {/* Use aggregate stats: positiveBiasDistribution.bias_distribution */}
+              {Object.keys(positiveBiasDistribution?.bias_distribution || {}).length > 0 ? (
                 <ul className="text-xs space-y-1">
-                  {Object.entries(positiveBiasDistribution.percentages || {}).map(([tag, percentage]) => (
+                  {Object.entries(positiveBiasDistribution?.bias_distribution || {}).map(([tag, data]) => (
                     <li key={tag} className="flex justify-between">
                       <span>{getBiasTagLabel(tag)}:</span>
-                      <span className="font-medium">{percentage}%</span>
+                      {/* Access data.percentage from the aggregate stats */}
+                      <span className="font-medium">{data.percentage}%</span> 
                     </li>
                   ))}
                 </ul>
@@ -184,12 +179,14 @@ export const CommentSummaryDisplay: React.FC<CommentSummaryDisplayProps> = ({
             {/* Negative Bias Pattern Summary */}
             <div className="mt-2 border-t border-red-100 pt-3">
               <h4 className="text-sm font-medium text-gray-700 mb-2">Bias Pattern Summary:</h4>
-              {Object.keys(negativeBiasDistribution.percentages || {}).length > 0 ? (
+              {/* Use aggregate stats: negativeBiasDistribution.bias_distribution */}
+              {Object.keys(negativeBiasDistribution?.bias_distribution || {}).length > 0 ? (
                 <ul className="text-xs space-y-1">
-                  {Object.entries(negativeBiasDistribution.percentages || {}).map(([tag, percentage]) => (
+                  {Object.entries(negativeBiasDistribution?.bias_distribution || {}).map(([tag, data]) => (
                     <li key={tag} className="flex justify-between">
                       <span>{getBiasTagLabel(tag)}:</span>
-                      <span className="font-medium">{percentage}%</span>
+                      {/* Access data.percentage from the aggregate stats */}
+                      <span className="font-medium">{data.percentage}%</span>
                     </li>
                   ))}
                 </ul>

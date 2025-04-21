@@ -397,25 +397,27 @@ class ProfessorViewSet(viewsets.ModelViewSet):
         """Get summarized sentiment statistics for a professor with paginated comments"""
         try:
             page = request.query_params.get('page', 1)
+            # Check if aggregate stats are requested
+            include_aggregate_stats = request.query_params.get('include_aggregate_stats', 'false').lower() == 'true'
+            
             # For institution-wide data, use caching
             if request.user.role.role == 'ADMIN':   
                 # Check cache for institution data
                 cache_key = f'institution_sentiment_summary_page_{page}'
                 cached_data = cache.get(cache_key)
                 
-                if cached_data:
+                if cached_data and not include_aggregate_stats:
                     return Response(cached_data)
                 
                 # Process institution-wide data
-                sentiment_data = get_sentiment_summary(institution=True, page=int(page))
+                sentiment_data = get_sentiment_summary(institution=True, page=int(page), include_aggregate_stats=include_aggregate_stats)
                 
                 # Cache the results
                 cache.set(cache_key, sentiment_data, CACHE_TIMEOUT_SHORT)
-                
                 return Response(sentiment_data)
             else:
                 professor = self.get_object()
-                sentiment_data = get_sentiment_summary(professor_id=professor.professor_id, page=int(page))
+                sentiment_data = get_sentiment_summary(professor_id=professor.professor_id, page=int(page), include_aggregate_stats=include_aggregate_stats)
                 return Response(sentiment_data)
                 
         except Http404:
