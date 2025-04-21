@@ -11,10 +11,15 @@ interface SentimentSummary {
     negative: number;
   };
   comments: Array<{
+    id: number;
     comment: string;
     processed_comment: string;
     sentiment: number;
     created_at: string;
+    bias_tag: string | null;
+    bias_interpretation: string | null;
+    stereotype_bias_score: number | null;
+    objective_focus_percentage: number | null;
   }>;
   total_pages: number;
   message?: string;
@@ -82,9 +87,50 @@ export const CommentSummaryDisplay: React.FC<CommentSummaryDisplayProps> = ({
       </div>
     );
   }
-
   const positivePercentage = ((summary.sentiment_breakdown.positive / summary.total_comments) * 100).toFixed(1);
   const negativePercentage = ((summary.sentiment_breakdown.negative / summary.total_comments) * 100).toFixed(1);
+
+  // Calculate bias tag distributions
+  const calculateBiasDistribution = (comments: SentimentSummary['comments'], sentiment: number) => {
+    // Filter by sentiment
+    const filteredComments = comments.filter(c => c.sentiment === sentiment);
+    if (filteredComments.length === 0) return {};
+    
+    // Count occurrences of each bias tag
+    const tagCounts: Record<string, number> = {};
+    filteredComments.forEach(comment => {
+      const tag = comment.bias_tag || 'UNKNOWN';
+      tagCounts[tag] = (tagCounts[tag] || 0) + 1;
+    });
+    
+    // Calculate percentages
+    const tagPercentages: Record<string, string> = {};
+    const total = filteredComments.length;
+    
+    Object.entries(tagCounts).forEach(([tag, count]) => {
+      tagPercentages[tag] = ((count / total) * 100).toFixed(1);
+    });
+    
+    return { counts: tagCounts, percentages: tagPercentages };
+  };
+  
+  // Get bias tag distribution for positive and negative comments
+  const positiveBiasDistribution = calculateBiasDistribution(summary.comments, 1);
+  const negativeBiasDistribution = calculateBiasDistribution(summary.comments, 0);
+  
+  // Helper function to get label for bias tag
+  const getBiasTagLabel = (tag: string): string => {
+    switch (tag) {
+      case 'POS_BIAS_M': return 'Male Stereotype Focus';
+      case 'POS_BIAS_F': return 'Female Stereotype Focus';
+      case 'NEG_BIAS_M': return 'Male Negative Bias';
+      case 'NEG_BIAS_F': return 'Female Negative Bias';
+      case 'OBJECTIVE': case 'OBJECTIVE_M_LEAN': case 'OBJECTIVE_F_LEAN': return 'Objective Focus';
+      case 'NEUTRAL': return 'Neutral Pattern';
+      case 'UNKNOWN': return 'Analysis Error';
+      default: return 'No Bias Tag';
+    }
+  };
 
   return (
     <div className={`space-y-6 ${className}`}>
@@ -94,24 +140,62 @@ export const CommentSummaryDisplay: React.FC<CommentSummaryDisplayProps> = ({
           Overall Sentiment Distribution
         </h3>
         <div className="grid grid-cols-2 gap-6">
-          <div className="flex flex-col items-center p-4 bg-green-50 rounded-lg">
-            <SmileIcon size={32} className="text-green-600 mb-2" />
-            <div className="text-2xl font-bold text-green-600">
-              {positivePercentage}%
+          <div className="flex flex-col p-4 bg-green-50 rounded-lg">
+            <div className="flex items-center justify-center mb-4">
+              <SmileIcon size={32} className="text-green-600 mr-2" />
+              <div className="text-2xl font-bold text-green-600">
+                {positivePercentage}%
+              </div>
             </div>
-            <div className="text-sm text-gray-600 mt-1">Positive</div>
-            <div className="text-xs text-gray-500 mt-1">
+            <div className="text-sm text-gray-600 mt-1 text-center">Positive</div>
+            <div className="text-xs text-gray-500 mt-1 text-center mb-4">
               {summary.sentiment_breakdown.positive} comments
             </div>
-          </div>
-          <div className="flex flex-col items-center p-4 bg-red-50 rounded-lg">
-            <FrownIcon size={32} className="text-red-600 mb-2" />
-            <div className="text-2xl font-bold text-red-600">
-              {negativePercentage}%
+            
+            {/* Positive Bias Pattern Summary */}
+            <div className="mt-2 border-t border-green-100 pt-3">
+              <h4 className="text-sm font-medium text-gray-700 mb-2">Bias Pattern Summary:</h4>
+              {Object.keys(positiveBiasDistribution.percentages || {}).length > 0 ? (
+                <ul className="text-xs space-y-1">
+                  {Object.entries(positiveBiasDistribution.percentages || {}).map(([tag, percentage]) => (
+                    <li key={tag} className="flex justify-between">
+                      <span>{getBiasTagLabel(tag)}:</span>
+                      <span className="font-medium">{percentage}%</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-xs text-gray-500">No bias pattern data available</p>
+              )}
             </div>
-            <div className="text-sm text-gray-600 mt-1">Negative</div>
-            <div className="text-xs text-gray-500 mt-1">
+          </div>
+          <div className="flex flex-col p-4 bg-red-50 rounded-lg">
+            <div className="flex items-center justify-center mb-4">
+              <FrownIcon size={32} className="text-red-600 mr-2" />
+              <div className="text-2xl font-bold text-red-600">
+                {negativePercentage}%
+              </div>
+            </div>
+            <div className="text-sm text-gray-600 mt-1 text-center">Negative</div>
+            <div className="text-xs text-gray-500 mt-1 text-center mb-4">
               {summary.sentiment_breakdown.negative} comments
+            </div>
+            
+            {/* Negative Bias Pattern Summary */}
+            <div className="mt-2 border-t border-red-100 pt-3">
+              <h4 className="text-sm font-medium text-gray-700 mb-2">Bias Pattern Summary:</h4>
+              {Object.keys(negativeBiasDistribution.percentages || {}).length > 0 ? (
+                <ul className="text-xs space-y-1">
+                  {Object.entries(negativeBiasDistribution.percentages || {}).map(([tag, percentage]) => (
+                    <li key={tag} className="flex justify-between">
+                      <span>{getBiasTagLabel(tag)}:</span>
+                      <span className="font-medium">{percentage}%</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-xs text-gray-500">No bias pattern data available</p>
+              )}
             </div>
           </div>
         </div>
