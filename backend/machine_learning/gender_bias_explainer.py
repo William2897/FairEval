@@ -77,7 +77,7 @@ OBJECTIVE_PEDAGOGICAL_DESCRIPTORS = {
     'practical', 'pragmatic', 'reasonable', 'specific', 'delayed', 'performance', 'quality', 'effectiveness'
 }
 
-class GenderBiasExplainer:
+class GenderBiasExplainer:    
     def __init__(self, model, vocab, max_len=100):
         """Initializes the explainer with the model, vocabulary, and max length."""
         self.model = model
@@ -94,6 +94,17 @@ class GenderBiasExplainer:
             'stereotype_bias': 0.20,
             'moderate_stereotype_bias': 0.15
         }
+        
+    def _normalize_attention_weights(self, attention_weights):
+        """Normalize attention weights to ensure they sum to 1.0."""
+        if len(attention_weights) == 0:
+            return np.array([])
+        
+        # Normalize to sum to 1.0
+        weight_sum = np.sum(attention_weights)
+        if weight_sum > 0:
+            return attention_weights / weight_sum
+        return attention_weights
 
     def _load_discipline_gender_gaps(self):
         """Loads discipline gender rating gaps (requires Django setup or alternative data source)."""
@@ -171,11 +182,13 @@ class GenderBiasExplainer:
         batch_attention_cpu = batch_attention.cpu().numpy()
         results = []
 
-        for i in range(batch_size):
+        for i in range(batch_size):            
             original_tokens = original_tokens_batch[i]
             num_original_tokens = len(original_tokens)
             # Safely slice attention weights
-            attn_weights = batch_attention_cpu[i, :num_original_tokens] if num_original_tokens > 0 else np.array([])
+            raw_attn_weights = batch_attention_cpu[i, :num_original_tokens] if num_original_tokens > 0 else np.array([])
+            # Renormalize the weights after truncation to ensure they sum to 1.0
+            attn_weights = self._normalize_attention_weights(raw_attn_weights)
             pred_prob = float(batch_pred_cpu[i]) # Ensure float
 
             prediction = "Positive" if pred_prob >= 0.5 else "Negative"
@@ -230,13 +243,15 @@ class GenderBiasExplainer:
         # Prepare single input
         input_tensor, original_tokens_batch = self._tokenize_and_pad_batch([text])
         original_tokens = original_tokens_batch[0]
-        num_original_tokens = len(original_tokens)
-
-        # Single inference
+        num_original_tokens = len(original_tokens)        # Single inference
         with torch.no_grad():
             pred, attention = self.model(input_tensor, return_attention=True)
 
-        attn_weights = attention.squeeze().cpu().numpy()[:num_original_tokens] if num_original_tokens > 0 else np.array([])
+        # Extract and normalize attention weights
+        raw_attn_weights = attention.squeeze().cpu().numpy()[:num_original_tokens] if num_original_tokens > 0 else np.array([])
+        # Renormalize the weights after truncation to ensure they sum to 1.0
+        attn_weights = self._normalize_attention_weights(raw_attn_weights)
+        
         pred_prob = float(pred.item())
         prediction = "Positive" if pred_prob >= 0.5 else "Negative"
         confidence_score = pred_prob if pred_prob >= 0.5 else 1.0 - pred_prob
