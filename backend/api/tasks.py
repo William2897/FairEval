@@ -13,6 +13,7 @@ import numpy as np
 from typing import List, Dict, Any
 from django.conf import settings
 from tqdm import tqdm
+from django.core.cache import cache # Add this import
 
 # Import models and utils (ensure paths are correct)
 try:
@@ -323,6 +324,30 @@ def process_evaluation_data_task(self, file_path: str, db_config: Dict[str, Any]
             "failed_inserts": failed_inserts
         }
         print(f"[TASK END] Completed successfully. Result: {result_data}")
+
+        # --- Clear relevant caches after successful processing ---
+        if final_status in ["success", "partial_success"] and processed_count > 0:
+            print("Clearing relevant caches...")
+            cache_keys_to_delete = [
+                'rating_stats',                 # For RatingViewSet.stats
+                'discipline_stats',             # For ProfessorViewSet.discipline_stats
+                'gender_distribution',          # For ProfessorViewSet.gender_distribution
+                'tukey_analysis',               # For ProfessorViewSet.tukey_analysis
+                'gender_discipline_heatmap',    # For ProfessorViewSet.gender_discipline_heatmap
+                'gender_ratings_comparison',    # For ProfessorViewSet.gender_ratings_comparison
+                'institution_sentiment_summary_page_1', # Example for paginated cache
+                # Add other specific cache keys used by your views if necessary
+            ]
+            # For cache keys that might have variants (e.g., based on parameters),
+            # you might need a more sophisticated clearing strategy or use cache.delete_many with a list of keys.
+            for key in cache_keys_to_delete:
+                deleted_count = cache.delete(key)
+                if deleted_count > 0: # cache.delete returns number of versions deleted for versioned caches, or 1 if key existed, 0 otherwise for simple caches.
+                    print(f"  Cache key '{key}' deleted.")
+                else:
+                    print(f"  Cache key '{key}' not found or already expired.")
+            print("Cache clearing attempt finished.")
+
         return result_data
 
     except Exception as e:

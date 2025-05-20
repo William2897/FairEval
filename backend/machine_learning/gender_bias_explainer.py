@@ -240,8 +240,14 @@ class GenderBiasExplainer:
         if selected_gender not in ['Male', 'Female']:
              raise ValueError("Invalid selected_gender provided. Must be 'Male' or 'Female'.")
 
+        # Apply the same preprocessing as in pipeline.py before tokenization
+        from data_processing.text_preprocessing import clean_text
+        processed_text = clean_text(text)
+        if not processed_text.strip():
+            processed_text = text  # Fallback to original if cleaning removed everything
+
         # Prepare single input
-        input_tensor, original_tokens_batch = self._tokenize_and_pad_batch([text])
+        input_tensor, original_tokens_batch = self._tokenize_and_pad_batch([processed_text])
         original_tokens = original_tokens_batch[0]
         num_original_tokens = len(original_tokens)        # Single inference
         with torch.no_grad():
@@ -261,7 +267,7 @@ class GenderBiasExplainer:
 
         # Analyze patterns
         gender_bias_data = self._analyze_gender_patterns(
-            text, original_tokens, attn_weights, prediction, selected_gender, confidence_score
+            processed_text, original_tokens, attn_weights, prediction, selected_gender, confidence_score
         )
 
         explanation = {

@@ -154,12 +154,11 @@ def run_bias_analysis_only(processed_csv_path, output_csv_path, chunk_size=5000)
 
     try:
         print(f"Reading input CSV in chunks of size {chunk_size}...")
-        # Use context manager for file writing
         with open(output_csv_path, 'w', newline='', encoding='utf-8') as outfile:
             for i, chunk_df in enumerate(pd.read_csv(
                     processed_csv_path,
                     chunksize=chunk_size,
-                    dtype=dtypes,
+                    dtype=dtypes, # dtypes should include 'sentiment' and 'confidence'
                     keep_default_na=True,
                     na_values=['', '#N/A', '#N/A N/A', '#NA', '-1.#IND', '-1.#QNAN', '-NaN', '-nan', '1.#IND', '1.#QNAN', '<NA>', 'N/A', 'NA', 'NULL', 'NaN', 'n/a', 'nan', 'null']
                 )):
@@ -169,12 +168,10 @@ def run_bias_analysis_only(processed_csv_path, output_csv_path, chunk_size=5000)
                     print("  Skipping empty chunk.")
                     continue
 
-                # --- Fill NaNs needed for analysis ---
                 str_cols_fill_empty = ['gender', 'discipline', 'processed_comment']
                 for col in str_cols_fill_empty:
                     if col in chunk_df.columns: chunk_df[col] = chunk_df[col].fillna('')
 
-                # --- Perform Batched Bias Analysis ---
                 comments_batch = chunk_df['processed_comment'].tolist()
                 genders_batch = chunk_df['gender'].tolist()
                 disciplines_batch = chunk_df['discipline'].tolist()
@@ -190,7 +187,7 @@ def run_bias_analysis_only(processed_csv_path, output_csv_path, chunk_size=5000)
                         bias_results_list = explainer.explain_batch(valid_comments, valid_genders, valid_disciplines)
                     except Exception as bias_err:
                         print(f"  ERROR during batch bias analysis for chunk {i+1}: {bias_err}")
-                        bias_results_list = [{'gender_bias': {'interpretation': ['Batch Analysis Error'], 'stereotype_bias_score': None, 'category_attention_pct': {}}} for _ in valid_comments]
+                        bias_results_list = [{'prediction': 'Error', 'confidence': 0.0, 'gender_bias': {'interpretation': ['Batch Analysis Error'], 'stereotype_bias_score': None, 'category_attention_pct': {}}} for _ in valid_comments]
 
                 # --- Map results back ---
                 chunk_df['bias_tag'] = None
@@ -199,22 +196,39 @@ def run_bias_analysis_only(processed_csv_path, output_csv_path, chunk_size=5000)
                 chunk_df['objective_focus_percentage'] = pd.NA
 
                 res_idx = 0
-                for df_idx in valid_indices:
+                for original_df_idx in valid_indices: # original_df_idx is the index in chunk_df
                      if res_idx < len(bias_results_list):
                          explanation = bias_results_list[res_idx]
+
+                         # --- Get and update sentiment and confidence from the explainer ---
+                         predicted_sentiment_str = explanation.get('prediction')
+                         predicted_confidence = explanation.get('confidence')
+
+                         # Convert sentiment string to 0/1 for the 'sentiment' column (Int64)
+                         if predicted_sentiment_str == "Positive":
+                             new_sentiment_val = 1
+                         elif predicted_sentiment_str == "Negative":
+                             new_sentiment_val = 0
+                         else: # Handle 'Error' or unexpected predictions
+                             new_sentiment_val = pd.NA # Or a specific error code if your schema allows
+
+                         # Use .iloc for robust assignment to existing columns
+                         chunk_df.iloc[original_df_idx, chunk_df.columns.get_loc('sentiment')] = new_sentiment_val
+                         chunk_df.iloc[original_df_idx, chunk_df.columns.get_loc('confidence')] = float(predicted_confidence) if pd.notna(predicted_confidence) else pd.NA
+
+                         # --- Existing bias info mapping ---
                          gb = explanation.get('gender_bias', {})
                          interp_list = gb.get('interpretation', [])
                          st_score = gb.get('stereotype_bias_score')
                          obj_pct = gb.get('category_attention_pct', {}).get('objective_pedagogical', 0)
                          tag = explainer._determine_bias_tag(interp_list, st_score, obj_pct)
 
-                         # Use .iloc for potentially more reliable index-based assignment
-                         chunk_df.iloc[df_idx, chunk_df.columns.get_loc('bias_tag')] = tag
-                         chunk_df.iloc[df_idx, chunk_df.columns.get_loc('bias_interpretation')] = interp_list[0] if interp_list else None
-                         chunk_df.iloc[df_idx, chunk_df.columns.get_loc('stereotype_bias_score')] = float(st_score) if pd.notna(st_score) else pd.NA
-                         chunk_df.iloc[df_idx, chunk_df.columns.get_loc('objective_focus_percentage')] = float(obj_pct) if pd.notna(obj_pct) else pd.NA
+                         chunk_df.iloc[original_df_idx, chunk_df.columns.get_loc('bias_tag')] = tag
+                         chunk_df.iloc[original_df_idx, chunk_df.columns.get_loc('bias_interpretation')] = interp_list[0] if interp_list else None
+                         chunk_df.iloc[original_df_idx, chunk_df.columns.get_loc('stereotype_bias_score')] = float(st_score) if pd.notna(st_score) else pd.NA
+                         chunk_df.iloc[original_df_idx, chunk_df.columns.get_loc('objective_focus_percentage')] = float(obj_pct) if pd.notna(obj_pct) else pd.NA
                      res_idx += 1
-                print(f"  Bias analysis applied to chunk {i+1}.")                # --- Write chunk (with bias info) to output CSV ---
+                print(f"  Sentiment, confidence, and bias analysis applied to chunk {i+1}.")
                 if not output_header_written:
                     chunk_df.to_csv(outfile, index=False, header=True, lineterminator='\n')
                     output_header_written = True
