@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 from collections import defaultdict, Counter
 import os
-from tqdm import tqdm # Optional: Can use in batch processing if needed
+from tqdm import tqdm
 
 # --- Define LEXICONS (Updated as per previous refinement) ---
 
@@ -76,6 +76,9 @@ OBJECTIVE_PEDAGOGICAL_DESCRIPTORS = {
     'course', 'class', 'lecture', 'module', 'learning', 'teaching', 'professor', 'instructor', 'student',
     'practical', 'pragmatic', 'reasonable', 'specific', 'delayed', 'performance', 'quality', 'effectiveness'
 }
+
+# Add debug target substring at the top of the class
+TARGET_DEBUG_COMMENT_SUBSTRING = "Professor Warsi is brilliant"  # Or "clearly knowledgeable"
 
 class GenderBiasExplainer:    
     def __init__(self, model, vocab, max_len=100):
@@ -171,39 +174,53 @@ class GenderBiasExplainer:
         # Batched inference
         with torch.no_grad():
             try:
-                batch_pred, batch_attention = self.model(input_tensor, return_attention=True)
+                # model output: batch_pred shape [batch_size, 1] (for sentiment), batch_attention shape [batch_size, seq_len]
+                batch_pred_tensor, batch_attention_tensor = self.model(input_tensor, return_attention=True)
             except Exception as model_err:
                 print(f"ERROR during batch model inference: {model_err}")
-                # Return error results for the entire batch
                 return [{'prediction': 'Error', 'gender_bias': {'interpretation': [f'Model Inference Error: {model_err}']}} for _ in texts]
 
         # Process results individually after batch inference
-        batch_pred_cpu = batch_pred.squeeze().cpu().numpy()
-        batch_attention_cpu = batch_attention.cpu().numpy()
+        # Squeeze might reduce (1,1) to (1,) or even to 0-dim if batch_size is also 1
+        # It's safer to handle based on batch_size
+        
+        batch_pred_cpu = batch_pred_tensor.cpu().numpy() # Shape will be (batch_size, 1) or (batch_size,)
+        batch_attention_cpu = batch_attention_tensor.cpu().numpy() # Shape will be (batch_size, seq_len)
+        
         results = []
 
-        for i in range(batch_size):            
+        for i in range(batch_size):
             original_tokens = original_tokens_batch[i]
             num_original_tokens = len(original_tokens)
+            
             # Safely slice attention weights
+            # batch_attention_cpu is expected to be [batch_size, seq_len_padded]
             raw_attn_weights = batch_attention_cpu[i, :num_original_tokens] if num_original_tokens > 0 else np.array([])
-            # Renormalize the weights after truncation to ensure they sum to 1.0
             attn_weights = self._normalize_attention_weights(raw_attn_weights)
-            pred_prob = float(batch_pred_cpu[i]) # Ensure float
+
+            # Handle pred_prob extraction carefully
+            # batch_pred_cpu is expected to be [batch_size, 1] or [batch_size,]
+            # Accessing batch_pred_cpu[i] should give a single value or a single-element array
+            current_pred_val = batch_pred_cpu[i]
+            if isinstance(current_pred_val, np.ndarray) and current_pred_val.ndim > 0:
+                # If it's like array([0.9]), get the first element
+                pred_prob = float(current_pred_val[0]) 
+            else:
+                # If it's already a scalar (e.g. from a squeeze if batch_size was 1, or if model output is [batch_size])
+                pred_prob = float(current_pred_val)
 
             prediction = "Positive" if pred_prob >= 0.5 else "Negative"
             confidence_score = pred_prob if pred_prob >= 0.5 else 1.0 - pred_prob
 
-            # Check if gender is valid before proceeding
+            # ... (rest of the loop for gender_bias_data, explanation, etc.)
             current_gender = selected_genders[i]
             if current_gender not in ['Male', 'Female']:
                  print(f"Warning: Invalid gender ('{current_gender}') for comment index {i}. Skipping detailed analysis.")
-                 gender_bias_data = { # Default/error structure
+                 gender_bias_data = {
                      'interpretation': ['Error: Invalid gender provided'],
                      'stereotype_bias_score': 0.0, 'category_attention_pct': {}
                  }
             else:
-                # Analyze patterns for this single comment
                 gender_bias_data = self._analyze_gender_patterns(
                     texts[i], original_tokens, attn_weights, prediction, current_gender, confidence_score
                 )
@@ -216,7 +233,6 @@ class GenderBiasExplainer:
                 'gender_bias': gender_bias_data,
             }
 
-            # Add discipline context
             discipline = disciplines[i]
             if discipline and discipline in self.discipline_gender_gaps:
                  gap_data = self.discipline_gender_gaps[discipline]
@@ -226,7 +242,7 @@ class GenderBiasExplainer:
                      'male_avg_rating': gap_data.get('male_rating', 0),
                      'female_avg_rating': gap_data.get('female_rating', 0),
                      'correlation': self._calculate_attention_gap_correlation(
-                         gender_bias_data.get('stereotype_bias_score', 0.0), # Use .get for safety
+                         gender_bias_data.get('stereotype_bias_score', 0.0),
                          gap_data.get('gap', 0)
                      )
                  }
@@ -239,15 +255,17 @@ class GenderBiasExplainer:
         """Explain a single model prediction with attention and bias analysis."""
         if selected_gender not in ['Male', 'Female']:
              raise ValueError("Invalid selected_gender provided. Must be 'Male' or 'Female'.")
+        from data_processing.text_preprocessing import get_fully_processed_text_for_explainer
 
         # Apply the same preprocessing as in pipeline.py before tokenization
-        from data_processing.text_preprocessing import clean_text
-        processed_text = clean_text(text)
-        if not processed_text.strip():
-            processed_text = text  # Fallback to original if cleaning removed everything
+        processed_text_for_model = get_fully_processed_text_for_explainer(text)
+
+        if not processed_text_for_model.strip():
+            print(f"Warning: Full preprocessing made the input '{str(text)[:50]}...' empty. Analysis might be trivial.")
+            pass
 
         # Prepare single input
-        input_tensor, original_tokens_batch = self._tokenize_and_pad_batch([processed_text])
+        input_tensor, original_tokens_batch = self._tokenize_and_pad_batch([processed_text_for_model])
         original_tokens = original_tokens_batch[0]
         num_original_tokens = len(original_tokens)        # Single inference
         with torch.no_grad():
@@ -258,6 +276,14 @@ class GenderBiasExplainer:
         # Renormalize the weights after truncation to ensure they sum to 1.0
         attn_weights = self._normalize_attention_weights(raw_attn_weights)
         
+        # Debug information for target comment
+        if TARGET_DEBUG_COMMENT_SUBSTRING in processed_text_for_model:
+            print(f"\n--- DEBUG: explain_prediction for '{TARGET_DEBUG_COMMENT_SUBSTRING}' ---")
+            print(f"Raw text input: '{text}'")
+            print(f"Input text to _tokenize_and_pad_batch: '{processed_text_for_model}'")
+            print(f"Tokens sent to _analyze_gender_patterns: {original_tokens}")
+            print(f"Attention weights (sum: {np.sum(attn_weights):.4f}): {attn_weights.tolist()}")
+        
         pred_prob = float(pred.item())
         prediction = "Positive" if pred_prob >= 0.5 else "Negative"
         confidence_score = pred_prob if pred_prob >= 0.5 else 1.0 - pred_prob
@@ -267,7 +293,7 @@ class GenderBiasExplainer:
 
         # Analyze patterns
         gender_bias_data = self._analyze_gender_patterns(
-            processed_text, original_tokens, attn_weights, prediction, selected_gender, confidence_score
+            processed_text_for_model, original_tokens, attn_weights, prediction, selected_gender, confidence_score
         )
 
         explanation = {
@@ -344,6 +370,21 @@ class GenderBiasExplainer:
             for cat, items in descriptor_categories.items() if items
         }
 
+        # Add this debug block after calculating category_attention_pct and stereotype_bias_score
+        if TARGET_DEBUG_COMMENT_SUBSTRING in text:
+            print(f"--- DEBUG: _analyze_gender_patterns for '{TARGET_DEBUG_COMMENT_SUBSTRING}' ---")
+            print(f"  Text received: '{text}'")
+            print(f"  Tokens received: {tokens}")  # Should match the ones printed above
+            print(f"  Category Attention Pct: {category_attention_pct}")
+            print(f"  Stereotype Bias Score: {stereotype_bias_score}")
+            # You can also print individual category percentages
+            obj_pct = category_attention_pct.get('objective_pedagogical', 0)
+            print(f"  Calculated obj_pct: {obj_pct:.1f}%")
+            entertain_pct = category_attention_pct.get('entertainment_authority', 0)
+            print(f"  Calculated entertain_pct: {entertain_pct:.1f}%")
+            intellect_pct = category_attention_pct.get('intellect_achievement', 0)
+            print(f"  Calculated intellect_pct: {intellect_pct:.1f}%")
+        
         interpretation = self._interpret_gender_bias(
             stereotype_bias_score, category_attention_pct, prediction, selected_gender, confidence
         )

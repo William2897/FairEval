@@ -43,6 +43,31 @@ def clean_text(text):
     cleaned = re.sub(r'[^a-zA-Z\s]', ' ', text)
     return ' '.join(w for w in cleaned.split() if w not in STOP_WORDS)
 
+def get_fully_processed_text_for_explainer(raw_text):
+    """
+    Applies the same full preprocessing (clean_text + lemmatization)
+    used to generate 'processed_comment' in the pipeline.
+    """
+    if not isinstance(raw_text, str) or pd.isna(raw_text):
+        return ""
+
+    # Step 1: Apply clean_text (which includes lowercasing, contraction fixing,
+    # ASCII normalization, punctuation removal, and stopword removal)
+    cleaned_text_with_stopwords_removed = clean_text(raw_text)
+
+    if not cleaned_text_with_stopwords_removed: # if clean_text resulted in empty string
+        return ""
+
+    # Step 2: Lemmatization (as in process_texts)
+    # Ensure nlp object is available (it should be global in text_preprocessing.py)
+    try:
+        doc = nlp(cleaned_text_with_stopwords_removed)
+        lemmatized_text = ' '.join(token.lemma_ for token in doc)
+        return lemmatized_text
+    except Exception as e:
+        print(f"Error during lemmatization for explainer: {str(e)}")
+        return cleaned_text_with_stopwords_removed
+    
 def convert_to_list(text):
     """Convert text to list if it's not already"""
     if isinstance(text, list):
